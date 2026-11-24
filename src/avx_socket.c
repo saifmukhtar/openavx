@@ -174,10 +174,25 @@ bool avx_net_get_default_ip(char* out_ip, size_t out_len) {
     return true;
 }
 
-/* Binds non-blocking TCP server socket with SO_REUSEADDR, SO_REUSEPORT, and tuned TCP_NODELAY. */
+/*
+ * On POSIX, SO_REUSEADDR allows re-binding over TIME_WAIT without hijacking
+ * active listeners (which would require SO_REUSEPORT). On Windows Winsock2,
+ * SO_REUSEADDR allows multiple active listeners on the same IP:port, breaking
+ * dynamic port fallback across co-located transmitters; SO_EXCLUSIVEADDRUSE
+ * enforces exclusive port ownership per active listener.
+ */
+static void avx_socket_set_server_bind_opts(avx_socket_t fd) {
+    int opt = 1;
+#if defined(AVX_OS_WINDOWS)
+    setsockopt(fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&opt, sizeof(opt));
+#else
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#endif
+}
+
+/* Binds non-blocking TCP server socket with exclusive/reuse bind opts and tuned buffers. */
 avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t port) {
     avx_platform_sockets_init();
-    int opt = 1;
     int buf_size = 16 * 1024 * 1024; /* 16 MB buffer for video streaming */
 
     /* Case A: Explicit IPv6 literal (e.g. "::1" or "2001:...") */
@@ -186,7 +201,7 @@ avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t por
         avx_socket_t fd = socket(AF_INET6, SOCK_STREAM, 0);
         if (fd == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+        avx_socket_set_server_bind_opts(fd);
         avx_socket_set_nosigpipe(fd);
         setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
         setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
@@ -211,7 +226,7 @@ avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t por
             avx_socket_t fd = socket(AF_INET, SOCK_STREAM, 0);
             if (fd == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
-            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+            avx_socket_set_server_bind_opts(fd);
             avx_socket_set_nosigpipe(fd);
             setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
             setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
@@ -236,7 +251,7 @@ avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t por
     if (fd != AVX_INVALID_SOCKET) {
         int no = 0;
         setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&no, sizeof(no));
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+        avx_socket_set_server_bind_opts(fd);
         avx_socket_set_nosigpipe(fd);
         setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
         setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
@@ -257,7 +272,7 @@ avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t por
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+    avx_socket_set_server_bind_opts(fd);
     avx_socket_set_nosigpipe(fd);
     setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
     setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
