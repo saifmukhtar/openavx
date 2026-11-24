@@ -220,7 +220,38 @@ int main(void) {
 
         /* Now: Keep primary TCP socket open, but stop sending frames (stream stall) */
         printf("  [~] Freezing primary encoder (socket remains connected, no frames sent)...\n");
-        avx_sleep_ms(350); /* Exceeds 200 ms stall timeout with ample safety buffer */
+
+        /*
+         * Phase 1: Pump oavx_stream_receive so the stall detection logic runs
+         * and the receiver triggers failover (is_on_failover becomes true).
+         * The 200 ms timeout is measured against the last-received frame PTS,
+         * so we need to call receive() periodically for the stall clock to tick.
+         * Allow up to ~3 s on slow Windows CI runners (60 x 50 ms poll timeout).
+         */
+        for (int i = 0; i < 60; ++i) {
+            ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 50);
+            if (ft == OAVX_FRAME_TYPE_VIDEO)
+                oavx_stream_release_video(rx, &v_recv);
+            if (oavx_stream_is_on_failover(rx)) break;
+            avx_sleep_ms(20);
+        }
+
+        /*
+         * Phase 2: Wait for the receiver to establish a TCP connection to
+         * bak_tx.  After failover fires, the receiver performs a non-blocking
+         * connect + XML handshake that can take up to ~2 s on Windows CI.
+         * Frames sent to bak_tx while active_clients == 0 are silently
+         * dropped, so we MUST confirm the connection is live before sending.
+         * Poll bak_tx every ~50 ms for up to ~4 s (80 iterations).
+         * Continue pumping the receiver so its network state machine advances.
+         */
+        for (int i = 0; i < 80; ++i) {
+            if (oavx_stream_get_connection_count(bak_tx, 50) > 0) break;
+            ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 20);
+            if (ft == OAVX_FRAME_TYPE_VIDEO)
+                oavx_stream_release_video(rx, &v_recv);
+            avx_sleep_ms(30);
+        }
 
         /* Transmit frame on backup stream */
         oavx_video_frame_t v_bak;
@@ -239,8 +270,10 @@ int main(void) {
         }
 
         if (!received_bak) {
-            fprintf(stderr, "[-] Receiver failed to trigger failover on stream stall (is_on_failover=%d, ft=%d)\n",
-                    oavx_stream_is_on_failover(rx), (int)ft);
+            fprintf(stderr, "[-] Receiver failed to trigger failover on stream stall "
+                    "(is_on_failover=%d, ft=%d, bak_clients=%d)\n",
+                    oavx_stream_is_on_failover(rx), (int)ft,
+                    oavx_stream_get_connection_count(bak_tx, 0));
             return 1;
         }
 
