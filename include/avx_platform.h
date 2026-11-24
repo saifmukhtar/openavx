@@ -357,9 +357,40 @@ static inline int avx_socket_set_tcp_nodelay(avx_socket_t s, bool nodelay) {
     return setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char *)&opt, sizeof(opt));
 }
 
+/* Configure socket receive timeout in milliseconds */
+static inline int avx_socket_set_recv_timeout(avx_socket_t s, uint32_t timeout_ms) {
+    if (!avx_socket_is_valid(s)) return -1;
+#if defined(AVX_OS_WINDOWS)
+    DWORD tv = (DWORD)timeout_ms;
+    return setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
+#else
+    struct timeval tv;
+    tv.tv_sec = (time_t)(timeout_ms / 1000);
+    tv.tv_usec = (suseconds_t)((timeout_ms % 1000) * 1000);
+    return setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
+#endif
+}
+
+/* Configure socket send timeout in milliseconds */
+static inline int avx_socket_set_send_timeout(avx_socket_t s, uint32_t timeout_ms) {
+    if (!avx_socket_is_valid(s)) return -1;
+#if defined(AVX_OS_WINDOWS)
+    DWORD tv = (DWORD)timeout_ms;
+    return setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+#else
+    struct timeval tv;
+    tv.tv_sec = (time_t)(timeout_ms / 1000);
+    tv.tv_usec = (suseconds_t)((timeout_ms % 1000) * 1000);
+    return setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+#endif
+}
+
 /* Initialize platform sockets (Winsock startup on Windows, SIGPIPE ignore on POSIX) */
 static inline bool avx_platform_sockets_init(void) {
 #if defined(AVX_OS_WINDOWS)
+#if defined(_MSC_VER)
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
     WSADATA wsa;
     return (WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
 #elif defined(AVX_OS_POSIX)

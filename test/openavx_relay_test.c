@@ -40,6 +40,7 @@ static void test_stun_reflection(void)
     /* 1.1 Discovery via existing socket */
     avx_socket_t sock = avx_udp_create_socket(0, false);
     assert(sock != AVX_INVALID_SOCKET);
+    avx_socket_set_recv_timeout(sock, 2000);
 
     char out_ip[64] = {0};
     uint16_t out_port = 0;
@@ -84,6 +85,9 @@ static void test_relay_fanout_and_feedback(void)
     assert(pub_sock != AVX_INVALID_SOCKET);
     assert(sub1_sock != AVX_INVALID_SOCKET);
     assert(sub2_sock != AVX_INVALID_SOCKET);
+    avx_socket_set_recv_timeout(pub_sock, 2000);
+    avx_socket_set_recv_timeout(sub1_sock, 2000);
+    avx_socket_set_recv_timeout(sub2_sock, 2000);
 
     const uint32_t session_id = 101;
 
@@ -180,6 +184,8 @@ static void test_transparent_relay(void)
     avx_socket_t sub_sock = avx_udp_create_socket(0, false);
     assert(pub_sock != AVX_INVALID_SOCKET);
     assert(sub_sock != AVX_INVALID_SOCKET);
+    avx_socket_set_recv_timeout(pub_sock, 2000);
+    avx_socket_set_recv_timeout(sub_sock, 2000);
 
     const uint32_t session_id = 202;
 
@@ -241,6 +247,8 @@ static void test_rudp_fec_stream_over_relay(void)
     avx_socket_t rx_sock = avx_udp_create_socket(0, false);
     assert(tx_sock != AVX_INVALID_SOCKET);
     assert(rx_sock != AVX_INVALID_SOCKET);
+    avx_socket_set_recv_timeout(tx_sock, 2000);
+    avx_socket_set_recv_timeout(rx_sock, 2000);
 
     const uint32_t session_id = 303;
     assert(avx_relay_client_bind_session(tx_sock, "127.0.0.1", TEST_RELAY_PORT, session_id, true) == 0);
@@ -336,6 +344,7 @@ static void test_tcp_wan_signaling(void)
                                                  "avx://192.168.1.150:7960",
                                                  "production");
     assert(pub_sock >= 0);
+    avx_socket_set_recv_timeout(pub_sock, 3000);
 
     /* 6.2 Client calls RESOLVE */
     char url[256] = {0};
@@ -381,6 +390,7 @@ static void test_tcp_wan_signaling(void)
 
 int main(void)
 {
+    avx_platform_sockets_init();
     printf("\n=======================================================\n");
     printf(" OpenAVX Phase 3: WAN Discovery, STUN & UDP Relay Test\n");
     printf("=======================================================\n\n");
@@ -391,6 +401,7 @@ int main(void)
     test_rudp_fec_stream_over_relay();
     test_tcp_wan_signaling();
 
+    avx_platform_sockets_cleanup();
     printf("\n[PASS] All OpenAVX WAN Discovery & Relay Server tests passed successfully!\n\n");
     return 0;
 }

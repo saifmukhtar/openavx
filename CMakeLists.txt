@@ -414,6 +414,10 @@ if(BUILD_TESTING)
         openavx_concurrency_audit_test
         openavx_simd_audit_test
         oavx_stream_test
+        oavx_stream_rudp_test
+        openavx_rudp_test
+        openavx_failover_test
+        openavx_congestion_test
         openavx_multinic_test
         openavx_ipv6_test
         openavx_audio_codec_test

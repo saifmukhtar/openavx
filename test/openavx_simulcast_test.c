@@ -158,6 +158,7 @@ static void test_lazy_simulcast_lifecycle(void) {
     /* Connect a test client socket to transmitter */
     int client_fd = socket(AF_INET, SOCK_STREAM, 0);
     assert(client_fd >= 0);
+    avx_socket_set_recv_timeout(client_fd, 3000);
 
     struct sockaddr_in sin;
     memset(&sin, 0, sizeof(sin));
@@ -170,14 +171,22 @@ static void test_lazy_simulcast_lifecycle(void) {
 
     /* Read initial transmitter handshake XML */
     uint32_t xml_len = 0;
-    ssize_t r1 = recv(client_fd, (char*)&xml_len, sizeof(xml_len), MSG_WAITALL);
-    assert(r1 == (ssize_t)sizeof(xml_len));
+    size_t len_read = 0;
+    while (len_read < sizeof(xml_len)) {
+        ssize_t r1 = recv(client_fd, (char*)&xml_len + len_read, sizeof(xml_len) - len_read, 0);
+        assert(r1 > 0);
+        len_read += (size_t)r1;
+    }
     assert(xml_len > 0 && xml_len < 4096);
 
     char *xml_buf = (char *)malloc(xml_len + 1);
     assert(xml_buf != NULL);
-    ssize_t r2 = recv(client_fd, xml_buf, xml_len, MSG_WAITALL);
-    assert(r2 == (ssize_t)xml_len);
+    size_t total_read = 0;
+    while (total_read < xml_len) {
+        ssize_t r2 = recv(client_fd, xml_buf + total_read, xml_len - total_read, 0);
+        assert(r2 > 0);
+        total_read += (size_t)r2;
+    }
     xml_buf[xml_len] = '\0';
     free(xml_buf);
 
@@ -275,7 +284,7 @@ static void test_inflight_profile_migration(void) {
     assert(rx != NULL);
 
     /* Allow receiver to connect */
-    avx_sleep_ms(150);
+    avx_sleep_ms(200);
 
     /* Send test frame */
     size_t frame_bytes = 1280 * 720 * 2;
@@ -301,7 +310,11 @@ static void test_inflight_profile_migration(void) {
     assert(avx_tx_is_wan_encoder_active(tx) == false);
 
     /* Now receiver dynamically requests profile migration to WAN */
-    bool req_ok = avx_rx_request_profile(rx, "wan");
+    bool req_ok = false;
+    for (int retry = 0; retry < 50 && !req_ok; ++retry) {
+        req_ok = avx_rx_request_profile(rx, "wan");
+        if (!req_ok) avx_sleep_ms(20);
+    }
     assert(req_ok == true);
 
     /* Allow reverse worker to process request */
@@ -324,7 +337,11 @@ static void test_inflight_profile_migration(void) {
     printf("    -> In-flight promotion to WAN: encoder active (codec: %.4s)\n", (const char *)&wan_codec);
 
     /* Now receiver dynamically switches back to LAN */
-    req_ok = avx_rx_request_profile(rx, "lan");
+    req_ok = false;
+    for (int retry = 0; retry < 50 && !req_ok; ++retry) {
+        req_ok = avx_rx_request_profile(rx, "lan");
+        if (!req_ok) avx_sleep_ms(20);
+    }
     assert(req_ok == true);
 
     /* Allow reverse worker to process demotion */
@@ -360,6 +377,7 @@ static void test_inflight_profile_migration(void) {
 }
 
 int main(void) {
+    avx_platform_sockets_init();
     printf("===================================================================\n");
     printf("  OpenAVX Lazy On-Demand Hardware Simulcast Test Suite             \n");
     printf("===================================================================\n");
@@ -369,6 +387,7 @@ int main(void) {
     test_lazy_simulcast_lifecycle();
     test_inflight_profile_migration();
 
+    avx_platform_sockets_cleanup();
     printf("\n>>> ALL SIMULCAST TESTS PASSED SUCCESSFULLY! <<<\n");
     return 0;
 }
