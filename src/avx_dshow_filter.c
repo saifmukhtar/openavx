@@ -10,7 +10,9 @@
 
 #define _WIN32_WINNT 0x0601
 #define COBJMACROS
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 #include <windows.h>
 #include <stdbool.h>
@@ -955,8 +957,18 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
     return TRUE;
 }
 
+#if defined(_MSC_VER)
+#pragma comment(linker, "/EXPORT:DllGetClassObject")
+#pragma comment(linker, "/EXPORT:DllCanUnloadNow")
+#pragma comment(linker, "/EXPORT:DllRegisterServer")
+#pragma comment(linker, "/EXPORT:DllUnregisterServer")
+#define DSHOW_EXPORT STDAPI
+#else
+#define DSHOW_EXPORT __declspec(dllexport) STDAPI
+#endif
+
 /* COM class factory entry point instantiating OpenAVX DirectShow source filter. */
-__declspec(dllexport) STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
+DSHOW_EXPORT DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 {
     if (!ppv) return E_POINTER;
     *ppv = NULL;
@@ -975,20 +987,20 @@ __declspec(dllexport) STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPV
     return hr;
 }
 
-__declspec(dllexport) STDAPI DllCanUnloadNow(void)
+DSHOW_EXPORT DllCanUnloadNow(void)
 {
     return (g_cComponents == 0 && g_cServerLocks == 0) ? S_OK : S_FALSE;
 }
 
 /* Self-registration entry point registering filter under user DirectShow video category. */
-__declspec(dllexport) STDAPI DllRegisterServer(void)
+DSHOW_EXPORT DllRegisterServer(void)
 {
     char dll_path[MAX_PATH] = "";
     GetModuleFileNameA(g_hInst, dll_path, MAX_PATH);
     return avx_dshow_register_filter(dll_path) ? S_OK : E_FAIL;
 }
 
-__declspec(dllexport) STDAPI DllUnregisterServer(void)
+DSHOW_EXPORT DllUnregisterServer(void)
 {
     return avx_dshow_unregister_filter() ? S_OK : E_FAIL;
 }
