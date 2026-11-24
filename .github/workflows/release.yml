@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Build & Packaging Tools
         run: |
@@ -66,7 +66,7 @@ jobs:
         run: apk add --no-cache git build-base cmake linux-headers ffmpeg-dev
 
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure CMake
         run: |
@@ -104,7 +104,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure Universal 2 Build
         run: |
@@ -142,7 +142,7 @@ jobs:
     runs-on: windows-2025
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure CMake
         run: cmake -B build-win -S . -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_EXTENSIONS=OFF -DBUILD_TESTING=ON
@@ -174,7 +174,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -220,7 +220,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download Linux Packages
         uses: actions/download-artifact@v4
