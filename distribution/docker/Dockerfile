@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # Stage 1: Build & Automated Verification
-FROM alpine:3.20 AS builder
+FROM alpine:3.24 AS builder
 
 RUN apk add --no-cache \
     build-base \
@@ -25,7 +25,7 @@ RUN cmake -B build -S . \
     DESTDIR=/staging cmake --install build
 
 # Stage 2: Minimal Alpine Runtime Image
-FROM alpine:3.20 AS runtime
+FROM alpine:3.24 AS runtime
 
 RUN apk add --no-cache \
     libgcc \
