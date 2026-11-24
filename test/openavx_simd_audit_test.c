@@ -459,7 +459,9 @@ static bool is_emulated_cpu(void) {
         char line[256];
         bool foreign_vendor = false;
         while (fgets(line, sizeof(line), f)) {
-            if (strstr(line, "GenuineIntel") || strstr(line, "AuthenticAMD")) {
+            if (strstr(line, "GenuineIntel") || strstr(line, "AuthenticAMD") ||
+                strstr(line, "QEMU") ||
+                (strstr(line, "CPU implementer") && strstr(line, "0x00"))) {
                 foreign_vendor = true;
                 break;
             }
