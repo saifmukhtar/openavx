@@ -10,7 +10,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#else
 #include <strings.h>
 #endif
 #include <ctype.h>

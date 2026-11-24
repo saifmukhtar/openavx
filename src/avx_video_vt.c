@@ -9,6 +9,7 @@
 #include "avx_video_codec.h"
 #include "avx_internal.h"
 #include "avx_rtsp.h"
+#include "avx_color.h"
 
 #if defined(AVX_OS_MACOS)
 
@@ -586,6 +587,9 @@ typedef struct {
     size_t                  out_size;
     bool                    out_is_keyframe;
     bool                    encode_error;
+
+    uint8_t                *tmp_buf;
+    size_t                  tmp_cap;
 } avx_vt_enc_ctx_t;
 
 static void vt_compression_output_callback(
@@ -798,7 +802,7 @@ static int vt_enc_create(const avx_video_enc_cfg_t *cfg, void **backend_ctx) {
     return 0;
 }
 
-static CVPixelBufferRef vt_enc_wrap_pixel_buffer(const oavx_video_frame_t *in, uint32_t w, uint32_t h) {
+static CVPixelBufferRef vt_enc_wrap_pixel_buffer(avx_vt_enc_ctx_t *ctx, const oavx_video_frame_t *in, uint32_t w, uint32_t h) {
     if (!in || !in->planes[0]) return NULL;
 
     CVPixelBufferRef px_buf = NULL;
@@ -826,20 +830,37 @@ static CVPixelBufferRef vt_enc_wrap_pixel_buffer(const oavx_video_frame_t *in, u
             NULL, NULL, NULL, &px_buf
         );
     } else if (in->fourcc == OAVX_FOURCC_VIDEO_TYPE_P216) {
-        void *ptrs[2] = { in->planes[0], in->planes[1] ? in->planes[1] : (in->planes[0] + (size_t)w * h * 2ULL) };
-        size_t widths[2] = { w, (w + 1U) / 2U };
-        size_t heights[2] = { h, h };
-        size_t strides[2] = {
-            in->strides[0] ? in->strides[0] : (size_t)w * 2ULL,
-            in->strides[1] ? in->strides[1] : (size_t)w * 2ULL
-        };
-        CVPixelBufferCreateWithPlanarBytes(
-            kCFAllocatorDefault, w, h,
-            kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
-            NULL, 0,
-            2, ptrs, widths, heights, strides,
-            NULL, NULL, NULL, &px_buf
-        );
+        if (ctx && ctx->target_fourcc == OAVX_FOURCC_VIDEO_TYPE_H264) {
+            size_t needed = (size_t)w * (size_t)h * 2ULL;
+            if (ctx->tmp_cap < needed) {
+                uint8_t *nb = (uint8_t *)realloc(ctx->tmp_buf, needed);
+                if (!nb) return NULL;
+                ctx->tmp_buf = nb;
+                ctx->tmp_cap = needed;
+            }
+            avx_color_p216_to_uyvy(in->planes[0], ctx->tmp_buf, (int)w, (int)h);
+            CVPixelBufferCreateWithBytes(
+                kCFAllocatorDefault, w, h,
+                kCVPixelFormatType_422YpCbCr8,
+                ctx->tmp_buf, (size_t)w * 2ULL,
+                NULL, NULL, NULL, &px_buf
+            );
+        } else {
+            void *ptrs[2] = { in->planes[0], in->planes[1] ? in->planes[1] : (in->planes[0] + (size_t)w * h * 2ULL) };
+            size_t widths[2] = { w, (w + 1U) / 2U };
+            size_t heights[2] = { h, h };
+            size_t strides[2] = {
+                in->strides[0] ? in->strides[0] : (size_t)w * 2ULL,
+                in->strides[1] ? in->strides[1] : (size_t)w * 2ULL
+            };
+            CVPixelBufferCreateWithPlanarBytes(
+                kCFAllocatorDefault, w, h,
+                kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+                NULL, 0,
+                2, ptrs, widths, heights, strides,
+                NULL, NULL, NULL, &px_buf
+            );
+        }
     } else if (in->fourcc == OAVX_FOURCC_VIDEO_TYPE_BGRA || in->fourcc == OAVX_FOURCC_VIDEO_TYPE_BGRX) {
         size_t stride = in->strides[0] ? in->strides[0] : (size_t)w * 4ULL;
         CVPixelBufferCreateWithBytes(
@@ -849,13 +870,22 @@ static CVPixelBufferRef vt_enc_wrap_pixel_buffer(const oavx_video_frame_t *in, u
             NULL, NULL, NULL, &px_buf
         );
     } else if (in->fourcc == OAVX_FOURCC_VIDEO_TYPE_RGBA || in->fourcc == OAVX_FOURCC_VIDEO_TYPE_RGBX) {
-        size_t stride = in->strides[0] ? in->strides[0] : (size_t)w * 4ULL;
-        CVPixelBufferCreateWithBytes(
-            kCFAllocatorDefault, w, h,
-            kCVPixelFormatType_32RGBA,
-            in->planes[0], stride,
-            NULL, NULL, NULL, &px_buf
-        );
+        if (ctx) {
+            size_t needed = (size_t)w * (size_t)h * 4ULL;
+            if (ctx->tmp_cap < needed) {
+                uint8_t *nb = (uint8_t *)realloc(ctx->tmp_buf, needed);
+                if (!nb) return NULL;
+                ctx->tmp_buf = nb;
+                ctx->tmp_cap = needed;
+            }
+            avx_color_rgba_to_bgra(in->planes[0], ctx->tmp_buf, (int)w, (int)h);
+            CVPixelBufferCreateWithBytes(
+                kCFAllocatorDefault, w, h,
+                kCVPixelFormatType_32BGRA,
+                ctx->tmp_buf, (size_t)w * 4ULL,
+                NULL, NULL, NULL, &px_buf
+            );
+        }
     } else if (in->fourcc == OAVX_FOURCC_VIDEO_TYPE_I420 || in->fourcc == OAVX_FOURCC_VIDEO_TYPE_YV12) {
         uint32_t cw = (w + 1U) / 2U;
         uint32_t ch = (h + 1U) / 2U;
@@ -899,7 +929,7 @@ static int vt_enc_encode(void *backend_ctx,
         return AVX_VIDEO_CODEC_ERROR;
     }
 
-    CVPixelBufferRef px_buf = vt_enc_wrap_pixel_buffer(in_frame, w, h);
+    CVPixelBufferRef px_buf = vt_enc_wrap_pixel_buffer(ctx, in_frame, w, h);
     if (!px_buf) {
         return AVX_VIDEO_CODEC_ERROR;
     }
@@ -977,6 +1007,10 @@ static void vt_enc_destroy(void *backend_ctx) {
         VTCompressionSessionInvalidate(ctx->session);
         CFRelease(ctx->session);
         ctx->session = NULL;
+    }
+    if (ctx->tmp_buf) {
+        free(ctx->tmp_buf);
+        ctx->tmp_buf = NULL;
     }
     free(ctx);
 }

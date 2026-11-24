@@ -215,10 +215,11 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
 
     if (slot->transport == OAVX_TRANSPORT_RUDP || slot->transport == OAVX_TRANSPORT_UDP) {
         uint16_t udp_p = slot->port + 1;
-        slot->udp_sock = avx_udp_create_socket(udp_p, true);
+        const char *bind_addr = (slot->bind_ip[0] != '\0') ? slot->bind_ip : NULL;
+        slot->udp_sock = avx_udp_create_socket_bind(bind_addr, udp_p, true);
         if (slot->udp_sock == AVX_INVALID_SOCKET) {
             for (uint16_t alt = slot->port + 2; alt <= slot->port + 30; ++alt) {
-                slot->udp_sock = avx_udp_create_socket(alt, true);
+                slot->udp_sock = avx_udp_create_socket_bind(bind_addr, alt, true);
                 if (slot->udp_sock != AVX_INVALID_SOCKET) {
                     udp_p = alt;
                     break;

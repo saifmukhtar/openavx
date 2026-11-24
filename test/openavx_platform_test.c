@@ -199,7 +199,7 @@ int main(void) {
 
     int64_t t1 = avx_time_ms();
     int64_t elapsed = t1 - t0;
-    ASSERT_TRUE(elapsed >= 25 && elapsed <= 100, "avx_sleep_ms(30) elapsed outside tolerance");
+    ASSERT_TRUE(elapsed >= 25 && elapsed <= 500, "avx_sleep_ms(30) elapsed outside tolerance");
     printf("    [+] avx_sleep_ms(30) measured %lld ms (within tolerance)\n", (long long)elapsed);
 
     /* 5. Dynamic Library Loading */

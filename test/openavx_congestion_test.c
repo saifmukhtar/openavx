@@ -46,6 +46,7 @@ static void test_speedhq_dynamic_quantization(void) {
 
     /* 1. High Quality (Default: 96) */
     oavx_speedhq_set_quality(96);
+    avx_speedhq_set_quality(96);
     assert(oavx_speedhq_get_quality() == 96);
     size_t high_size = 0;
     int ret = avx_speedhq_encode_c99_ex(OAVX_FOURCC_VIDEO_TYPE_SHQ2, width, height,
@@ -56,6 +57,7 @@ static void test_speedhq_dynamic_quantization(void) {
 
     /* 2. Low Bitrate / High Compression (Quality: 50, qscale=25) */
     oavx_speedhq_set_quality(50);
+    avx_speedhq_set_quality(50);
     assert(oavx_speedhq_get_quality() == 50);
     size_t low_size = 0;
     ret = avx_speedhq_encode_c99_ex(OAVX_FOURCC_VIDEO_TYPE_SHQ2, width, height,
@@ -79,6 +81,7 @@ static void test_speedhq_dynamic_quantization(void) {
 
     /* Restore default quality */
     oavx_speedhq_set_quality(96);
+    avx_speedhq_set_quality(96);
 
     free(uyvy);
     free(comp_high);

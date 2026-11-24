@@ -731,7 +731,11 @@ OPENAVX_API avx_rx_instance_t avx_rx_create(const avx_rx_config_t* p_create_sett
     slot->video_decoder_height = 0;
 
     if (slot->transport == OAVX_TRANSPORT_RUDP || slot->transport == OAVX_TRANSPORT_UDP) {
-        slot->udp_sock = avx_udp_create_socket(0, true);
+        const char *rx_bind = NULL;
+        if (slot->target_url[0] == '[' || (strchr(slot->target_url, ':') && strchr(strchr(slot->target_url, ':') + 1, ':'))) {
+            rx_bind = "::";
+        }
+        slot->udp_sock = avx_udp_create_socket_bind(rx_bind, 0, true);
         if (slot->udp_sock != AVX_INVALID_SOCKET) {
             struct sockaddr_storage sin;
             avx_socklen_t slen = sizeof(sin);

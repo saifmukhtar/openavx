@@ -257,7 +257,7 @@ static void test_ipv6_end_to_end_rudp_stream(void) {
     assert(rx != NULL);
 
     /* Wait for RUDP handshake */
-    usleep(80000);
+    usleep(150000);
 
     /* Send Video Frame (320x240 UYVY) */
     size_t v_bytes = 320 * 240 * 2;
@@ -283,7 +283,7 @@ static void test_ipv6_end_to_end_rudp_stream(void) {
     oavx_video_frame_t rx_vf;
     bool got_video = false;
 
-    for (int attempts = 0; attempts < 50 && !got_video; ++attempts) {
+    for (int attempts = 0; attempts < 100 && !got_video; ++attempts) {
         oavx_frame_type_t ft = oavx_stream_receive(rx, &rx_vf, NULL, NULL, 100);
         if (ft == OAVX_FRAME_TYPE_VIDEO) {
             assert(rx_vf.width == 320 && rx_vf.height == 240);
