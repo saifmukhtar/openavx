@@ -173,7 +173,8 @@ struct CMIOHardwarePlugInInterface {
     OSStatus (*DeviceResume)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID);
     OSStatus (*DeviceStartStream)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
     OSStatus (*DeviceStopStream)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
-    OSStatus (*DeviceProcessScheduledOutput)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, const AudioTimeStamp *scheduledOutput);
+    OSStatus (*DeviceProcessAVCCommand)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, void *ioAVCCommand);
+    OSStatus (*DeviceProcessRS422Command)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, void *ioRS422Command);
 };
 
 /* CMIO Hardware Plugin Type UUID: 30010C1C-93BF-11D8-8B5B-000A95881667 */

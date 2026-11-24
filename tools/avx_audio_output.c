@@ -74,6 +74,8 @@ static bool init_pulse(avx_audio_output_t* ao) {
     ao->pulse_free = (pa_simple_free_fn)avx_dlsym(ao->pulse_lib, "pa_simple_free");
 
     if (!p_new || !ao->pulse_write || !ao->pulse_free) {
+        ao->pulse_write = NULL;
+        ao->pulse_free = NULL;
         avx_dlclose(ao->pulse_lib);
         ao->pulse_lib = NULL;
         return false;
@@ -89,6 +91,8 @@ static bool init_pulse(avx_audio_output_t* ao) {
     ao->pulse_handle = p_new(NULL, "openavx-monitor", 1 /* PA_STREAM_PLAYBACK */,
                              NULL, "OpenAVX Live Audio", &ss, NULL, NULL, &err);
     if (!ao->pulse_handle) {
+        ao->pulse_write = NULL;
+        ao->pulse_free = NULL;
         avx_dlclose(ao->pulse_lib);
         ao->pulse_lib = NULL;
         return false;
@@ -115,6 +119,10 @@ static bool init_alsa(avx_audio_output_t* ao) {
     ao->alsa_free_global = (int (*)(void))avx_dlsym(ao->alsa_lib, "snd_config_update_free_global");
 
     if (!p_open || !p_params || !ao->alsa_writei || !ao->alsa_close) {
+        ao->alsa_writei = NULL;
+        ao->alsa_recover = NULL;
+        ao->alsa_close = NULL;
+        ao->alsa_free_global = NULL;
         avx_dlclose(ao->alsa_lib);
         ao->alsa_lib = NULL;
         return false;
@@ -122,6 +130,10 @@ static bool init_alsa(avx_audio_output_t* ao) {
 
     /* Open default playback device */
     if (p_open(&ao->alsa_handle, "default", 0 /* SND_PCM_STREAM_PLAYBACK */, 0) != 0) {
+        ao->alsa_writei = NULL;
+        ao->alsa_recover = NULL;
+        ao->alsa_close = NULL;
+        ao->alsa_free_global = NULL;
         avx_dlclose(ao->alsa_lib);
         ao->alsa_lib = NULL;
         return false;
@@ -133,6 +145,10 @@ static bool init_alsa(avx_audio_output_t* ao) {
     if (ret != 0) {
         ao->alsa_close(ao->alsa_handle);
         ao->alsa_handle = NULL;
+        ao->alsa_writei = NULL;
+        ao->alsa_recover = NULL;
+        ao->alsa_close = NULL;
+        ao->alsa_free_global = NULL;
         avx_dlclose(ao->alsa_lib);
         ao->alsa_lib = NULL;
         return false;
@@ -293,8 +309,9 @@ void avx_audio_output_destroy(avx_audio_output_t* ao) {
         ao->alsa_close(ao->alsa_handle);
         ao->alsa_handle = NULL;
     }
-    if (ao->alsa_free_global) {
+    if (ao->alsa_lib && ao->alsa_free_global) {
         ao->alsa_free_global();
+        ao->alsa_free_global = NULL;
     }
     if (ao->alsa_lib) {
         avx_dlclose(ao->alsa_lib);

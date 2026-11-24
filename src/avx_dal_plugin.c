@@ -60,24 +60,23 @@ static ULONG   DAL_AddRef(void *thisPointer);
 static ULONG   DAL_Release(void *thisPointer);
 
 static CMIOHardwarePlugInInterface g_DALInterface = {
-    NULL,
-    DAL_QueryInterface,
-    DAL_AddRef,
-    DAL_Release,
-    DAL_Initialize,
-    DAL_InitializeWithObjectID,
-    DAL_Teardown,
-    DAL_ObjectShow,
-    DAL_ObjectHasProperty,
-    DAL_ObjectIsPropertySettable,
-    DAL_ObjectGetPropertyDataSize,
-    DAL_ObjectGetPropertyData,
-    DAL_ObjectSetPropertyData,
-    DAL_DeviceSuspend,
-    DAL_DeviceResume,
-    DAL_DeviceStartStream,
-    DAL_DeviceStopStream,
-    DAL_DeviceProcessScheduledOutput
+    ._reserved = NULL,
+    .QueryInterface = DAL_QueryInterface,
+    .AddRef = DAL_AddRef,
+    .Release = DAL_Release,
+    .Initialize = DAL_Initialize,
+    .InitializeWithObjectID = DAL_InitializeWithObjectID,
+    .Teardown = DAL_Teardown,
+    .ObjectShow = DAL_ObjectShow,
+    .ObjectHasProperty = DAL_ObjectHasProperty,
+    .ObjectIsPropertySettable = DAL_ObjectIsPropertySettable,
+    .ObjectGetPropertyDataSize = DAL_ObjectGetPropertyDataSize,
+    .ObjectGetPropertyData = DAL_ObjectGetPropertyData,
+    .ObjectSetPropertyData = DAL_ObjectSetPropertyData,
+    .DeviceSuspend = DAL_DeviceSuspend,
+    .DeviceResume = DAL_DeviceResume,
+    .DeviceStartStream = DAL_DeviceStartStream,
+    .DeviceStopStream = DAL_DeviceStopStream
 };
 
 /* ========================================================================= */

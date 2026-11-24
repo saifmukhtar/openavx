@@ -709,7 +709,7 @@ const char* avx_tx_get_web_preview_url(avx_tx_instance_t instance, char *out_url
 int avx_tx_get_web_client_count(avx_tx_instance_t instance);
 
 /* Adaptive Bitrate & Rate Controller */
-struct avx_rate_controller_t* avx_tx_get_rate_controller(avx_tx_instance_t p_instance);
+OPENAVX_API struct avx_rate_controller_t* avx_tx_get_rate_controller(avx_tx_instance_t p_instance);
 
 /* On-Demand Hardware Simulcast Diagnostics & In-Flight Profile Migration */
 OPENAVX_API int avx_tx_get_wan_client_count(avx_tx_instance_t p_instance);
