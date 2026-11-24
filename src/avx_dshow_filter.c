@@ -6,7 +6,7 @@
  * src/avx_dshow_filter.c - Windows DirectShow Virtual Camera COM In-Process Server DLL
  */
 
-#if defined(AVX_OS_WINDOWS) || defined(__MINGW32__) || defined(__MINGW64__)
+#if defined(_WIN32) || defined(AVX_OS_WINDOWS) || defined(__MINGW32__) || defined(__MINGW64__)
 
 #define _WIN32_WINNT 0x0601
 #define COBJMACROS

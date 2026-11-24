@@ -1368,7 +1368,7 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(
     if (slot->connected) {
         uint32_t stall_threshold_ms = slot->failover_timeout_ms ? slot->failover_timeout_ms : 500;
         if (slot->has_failover && !slot->is_on_failover &&
-            slot->last_frame_recv_ns > 0 &&
+            slot->last_frame_recv_ns != 0 &&
             (now_ns - slot->last_frame_recv_ns) > (int64_t)stall_threshold_ms * 1000000LL) {
             avx_rx_execute_failover(slot, "FAILOVER TRIGGERED (STREAM STALL)");
         }
@@ -1643,7 +1643,7 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(
         int64_t curr_ns = avx_time_ns();
         uint32_t stall_threshold_ms = slot->failover_timeout_ms ? slot->failover_timeout_ms : 500;
         if (slot->has_failover && !slot->is_on_failover &&
-            slot->last_frame_recv_ns > 0 &&
+            slot->last_frame_recv_ns != 0 &&
             (curr_ns - slot->last_frame_recv_ns) > (int64_t)stall_threshold_ms * 1000000LL) {
             avx_rx_execute_failover(slot, "FAILOVER TRIGGERED (STREAM STALL IN POLL)");
         }

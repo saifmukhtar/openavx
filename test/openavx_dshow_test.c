@@ -34,6 +34,9 @@ typedef HRESULT (STDAPICALLTYPE *PFN_DllUnregisterServer)(void);
 
 int main(int argc, char **argv)
 {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     const char *dll_path = (argc > 1) ? argv[1] : "openavx_dshow_filter.dll";
     printf("[DSHOW TEST] Testing DirectShow Virtual Camera Filter DLL: %s\n", dll_path);
 
@@ -63,10 +66,11 @@ int main(int argc, char **argv)
     PFN_DllRegisterServer pfnRegister = (PFN_DllRegisterServer)GetProcAddress(hDll, "DllRegisterServer");
     PFN_DllUnregisterServer pfnUnregister = (PFN_DllUnregisterServer)GetProcAddress(hDll, "DllUnregisterServer");
 
-    assert(pfnGetClassObject != NULL);
-    assert(pfnCanUnloadNow != NULL);
-    assert(pfnRegister != NULL);
-    assert(pfnUnregister != NULL);
+    if (!pfnGetClassObject || !pfnCanUnloadNow || !pfnRegister || !pfnUnregister) {
+        fprintf(stderr, "[FAIL] One or more required DLL entry points missing (GetClass=%p, CanUnload=%p, Reg=%p, Unreg=%p)\n",
+                pfnGetClassObject, pfnCanUnloadNow, pfnRegister, pfnUnregister);
+        return 1;
+    }
     printf("[PASS] All required COM and registration exports located\n");
 
     /* Initialize COM for the test thread */

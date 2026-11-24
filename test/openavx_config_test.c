@@ -106,7 +106,15 @@ static void test_config_resolution_and_precedence(void) {
     printf("[*] 4. Testing Config Resolution & Precedence Hierarchy...\n");
 
     /* Create temporary test config directory */
+#ifdef _WIN32
+    char tmp_path[MAX_PATH];
+    DWORD plen = GetTempPathA(sizeof(tmp_path), tmp_path);
+    assert(plen > 0 && plen < sizeof(tmp_path));
+    char tmp_dir[MAX_PATH + 64];
+    snprintf(tmp_dir, sizeof(tmp_dir), "%sopenavx_cfg_test_XXXXXX", tmp_path);
+#else
     char tmp_dir[] = "/tmp/openavx_cfg_test_XXXXXX";
+#endif
     char* dname = mkdtemp(tmp_dir);
     assert(dname != NULL);
 

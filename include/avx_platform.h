@@ -561,7 +561,9 @@ static inline int64_t avx_time_ns(void) {
     LARGE_INTEGER freq, count;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&count);
-    return (int64_t)((count.QuadPart * 1000000000LL) / freq.QuadPart);
+    int64_t sec = (int64_t)(count.QuadPart / freq.QuadPart);
+    int64_t rem = (int64_t)(count.QuadPart % freq.QuadPart);
+    return (sec * 1000000000LL) + ((rem * 1000000000LL) / freq.QuadPart);
 }
 
 static inline int64_t avx_time_100ns(void) {
