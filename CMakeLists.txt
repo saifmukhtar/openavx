@@ -158,7 +158,7 @@ target_include_directories(openavx
         ${CMAKE_CURRENT_SOURCE_DIR}/third-party/monocypher
         ${CMAKE_CURRENT_SOURCE_DIR}/third-party/pipewire/pipewire-0.3
         ${CMAKE_CURRENT_SOURCE_DIR}/third-party/pipewire/spa-0.2
-        ${CMAKE_CURRENT_SOURCE_DIR}/third-party/proprietary
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/compat
 )
 
 target_compile_definitions(openavx
@@ -275,7 +275,7 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/third-party/monocypher
             ${CMAKE_CURRENT_SOURCE_DIR}/third-party/pipewire/pipewire-0.3
             ${CMAKE_CURRENT_SOURCE_DIR}/third-party/pipewire/spa-0.2
-            ${CMAKE_CURRENT_SOURCE_DIR}/third-party/proprietary
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/compat
         )
         target_link_libraries(${test_name} PRIVATE openavx Threads::Threads ${SYSTEM_LIBS})
         if(NOT MSVC)

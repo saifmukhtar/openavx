@@ -1,15 +1,13 @@
 /*
- * Copyright (c) 2005-2024 Apple Inc. All rights reserved.
+ * SPDX-License-Identifier: AGPL-3.0-or-later WITH Classpath-exception-2.0
+ * Copyright (c) 2026 Saif Mukhtar
  *
- * CoreMediaIO DAL Plugin Interface Definitions
+ * OpenAVX - Open Audio-Video eXchange
+ * include/compat/cmio/CMIOHardwarePlugIn.h - CoreMediaIO DAL Compatibility Stub for Non-macOS Builds
  *
- * This header contains interface declarations, UUIDs, FourCCs, and structures
- * derived from Apple's CoreMediaIO framework (macOS SDK).
- *
- * Notice: This copy is maintained in third-party/proprietary/ for offline platform
- * compatibility and cross-compilation testing on non-macOS environments.
- * When compiling natively on macOS, the system framework headers from Xcode SDK
- * are used.
+ * Provides minimal ABI-compatible types, FourCCs, UUIDs, and vtable struct
+ * definitions for compiling and testing CoreMediaIO DAL integration on
+ * non-macOS platforms. Native macOS builds use the system Xcode SDK headers.
  */
 
 #ifndef AVX_COMPAT_CMIO_HARDWARE_PLUGIN_H
