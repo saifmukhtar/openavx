@@ -4,7 +4,8 @@
 [![Release](https://github.com/saifmukhtar/openavx/actions/workflows/release.yml/badge.svg)](https://github.com/saifmukhtar/openavx/actions/workflows/release.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Standard: C99 / C++11](https://img.shields.io/badge/Standard-C99%20%7C%20C%2B%2B11-informational.svg)](CONTRIBUTING.md)
-[![Platforms: Linux | macOS | Windows | BSD](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20BSD-lightgrey.svg)](.github/workflows/ci.yml)
+[![Platforms: Linux | macOS | Windows](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](.github/workflows/ci.yml)
+[![GitHub Stars](https://img.shields.io/github/stars/saifmukhtar/openavx?style=social)](https://github.com/saifmukhtar/openavx)
 
 Open Audio-Video eXchange (`openavx`) is an open-standard IP audio and video transport library and command-line tool suite written in portable C99.
 
@@ -25,6 +26,55 @@ openavx monitor -s "Studio CAM"
 
 # 3. Output the stream as an OS virtual webcam for OBS Studio, Zoom, or Teams
 openavx virtcam -s "Studio CAM" -P
+```
+
+### Architecture & CLI Overview
+
+```text
+  Sender (pattern / SDK) ──▶ [ TCP or RUDP + 2D XOR FEC + XChaCha20-Poly1305 ] ──▶ Receiver
+                                                                                     ├──▶ monitor (terminal)
+                                                                                     ├──▶ virtcam (V4L2 / DirectShow / DAL)
+                                                                                     ├──▶ gateway (HTTP fMP4 / RTSP 1.0)
+                                                                                     └──▶ route / tally (matrix switcher)
+```
+
+| Subcommand | Purpose |
+|---|---|
+| `openavx pattern` | Generate SMPTE test patterns & audio tones as a live stream |
+| `openavx monitor` | Preview any active stream live in the terminal |
+| `openavx virtcam` | Bridge a stream (or smartphone camera via `--web`) to an OS virtual webcam |
+| `openavx route` | Matrix crosspoint router between sources and outputs |
+| `openavx tally` | Set or query PGM / PVW / Recording tally state |
+| `openavx gateway` | Serve a stream over HTTP `fMP4` and RTSP 1.0 |
+| `openavx find` | Discover active transmitters on the LAN via mDNS |
+| `openavx server` | Run the TCP discovery directory server for cross-subnet routing |
+
+### Minimal C99 Library Example
+
+```c
+#include "openavx.h"
+
+int main(void) {
+    oavx_context_t *ctx = oavx_context_create();
+    oavx_stream_config_t cfg = {
+        .name      = "MySource",
+        .direction = OAVX_DIR_TRANSMIT,
+        .transport = OAVX_TRANSPORT_TCP
+    };
+    oavx_stream_t *tx = oavx_stream_open(ctx, &cfg);
+
+    /* Send frames with oavx_stream_send_video(tx, &frame); */
+
+    oavx_stream_close(tx);
+    oavx_context_destroy(ctx);
+    return 0;
+}
+```
+
+Compile and link against `libopenavx`:
+
+```bash
+cc -std=c99 app.c -I/usr/local/include -L/usr/local/lib -lopenavx -o app
 ```
 
 ---
@@ -85,27 +135,19 @@ openavx server --port 7959
 ## Features
 
 * **Zero External Build Dependencies**: Written in strict C99 and C++11 using standard system libraries (`libc`, `pthreads`, `libm`, `libdl` / `ws2_32`). Builds with GCC, Clang, or MSVC in seconds.
-* **Low Latency Transport**: Low-overhead TCP stream framing and UDP/RUDP with selective NACK retransmission. Achieves 3.29 ms median transit latency over local networks.
-* **Standalone SpeedHQ Codec**: Integrated intra-frame compression (`SHQ0` through `SHQ5`, `SHQ7`, `SHQ9`) with alpha channel support. Decodes 1080p at 262 FPS in software, reducing 2 Gbps raw video to 50 Mbps.
-* **Hardware SIMD Acceleration**: Runtime AVX2/FMA and ARM NEON vector routines for color format conversions (`UYVY`, `RGBA`, `BGRA`, `NV12`), alpha blending, and 10-bit HDR metadata (`BT.709`, `BT.2020`, `HLG`, `PQ`).
-* **Packet Loss Protection (FEC)**: SMPTE ST 2022-1 2D XOR forward error correction processes parity at 8.43 GB/s, reconstructing lost packets without retransmission lag.
+* **Low Latency Transport**: Low-overhead TCP stream framing and UDP/RUDP with selective NACK retransmission (measured at ~3.29 ms median loopback transit latency; see [`BENCHMARK.md`](BENCHMARK.md)).
+* **Automatic Failover & Auto-Revert**: Instant socket-disconnect failover, configurable stream-stall timeout detection, sender-advised failover metadata, and debounced auto-revert to prevent flapping.
+* **Standalone SpeedHQ Codec**: Integrated intra-frame compression (`SHQ0` through `SHQ5`, `SHQ7`, `SHQ9`) with alpha channel support (measured up to 262 FPS software decode at 1080p on reference hardware).
+* **Hardware Video Codecs & Simulcast**: H.264, HEVC, and AV1 hardware encode/decode via VideoToolbox (macOS), Media Foundation (Windows), V4L2 M2M (Linux), or optional `libavcodec`, with WAN simulcast support.
+* **Hardware SIMD & Color Processing**: Runtime AVX2/FMA and ARM NEON acceleration for `UYVY`, `RGBA`, `BGRA`, and alpha blending, plus `NV12`, 16-bit `P216`, and 10-bit HDR metadata (`BT.709`, `BT.2020`, `HLG`, `PQ`).
+* **Frame Synchronizer & Adaptive Rate Control**: Jitter-buffered A/V frame synchronization and congestion-aware bitrate/FEC rate control.
+* **Packet Loss Protection (FEC)**: SMPTE ST 2022-1 2D XOR forward error correction (measured up to 8.43 GB/s parity throughput on reference hardware) to reconstruct lost packets without retransmission lag.
 * **Native End-to-End Encryption**: Built-in XChaCha20-Poly1305 authenticated encryption (RFC 8439) with session salt derivation and zero external crypto libraries.
 * **Broadcast Audio Engine**: Up to 32 audio channels, ITU-R BS.775 surround downmixing (7.1/5.1 to Stereo, 5.1 to Lt/Rt matrix), and Catmull-Rom/Blackman-Sinc sample rate conversion.
+* **RTSP 1.0 & HTTP fMP4 Gateway**: Built-in RTSP 1.0 server, zero-plugin browser fragmented MP4 (`fMP4`) playback, and browser smartphone camera ingest.
+* **Matrix Routing, Tally, PTZ & Recording**: Crosspoint source switching, PGM/PVW/Recording tally signaling, PTZ camera control, and local disk recording.
 * **Virtual Webcam Drivers**: Direct integration with Linux V4L2/PipeWire, Windows DirectShow, and macOS CoreMediaIO DAL.
 * **Automatic Discovery**: Local discovery via mDNS/DNS-SD (`224.0.0.251:5353`), plus a centralized TCP directory server for cross-subnet infrastructure.
-
----
-
-## Protocol Comparison
-
-| Property | OpenAVX | WebRTC | SRT | RTSP |
-|---|---|---|---|---|
-| **Median Latency** | **3.29 ms** (Sub-frame) | 100–300 ms | 120–500 ms | 500–2000 ms |
-| **License** | Open Source (AGPLv3 + Exception) | Open specification | Open Source (MPL-2.0) | Open (IETF) |
-| **Build Dependencies** | **Zero** (libc + pthreads) | Heavy C++ dependencies | OpenSSL / Libs | FFmpeg / Live555 |
-| **Compression** | SpeedHQ Intra-frame (or Raw) | Inter-frame (H.264/VP9) | Passthrough | Passthrough |
-| **Virtual Webcam** | Built-in (V4L2, DirectShow, DAL) | Browser-only | None | None |
-| **Discovery** | mDNS + TCP Directory | STUN / TURN / ICE | Manual configuration | Manual configuration |
 
 ---
 
@@ -117,28 +159,25 @@ Download pre-compiled binaries and native packages from [GitHub Releases](https:
 
 * **Debian / Ubuntu (`.deb`):**
   ```bash
-  sudo dpkg -i openavx-0.2.1-linux-x86_64.deb
+  sudo dpkg -i openavx-<version>-linux-x86_64.deb
   ```
 * **Fedora / RHEL / Rocky (`.rpm`):**
   ```bash
-  sudo rpm -Uvh openavx-0.2.1-linux-x86_64.rpm
+  sudo rpm -Uvh openavx-<version>-linux-x86_64.rpm
   ```
-* **Standalone Tarball (Linux glibc / Alpine musl / macOS):**
+* **Standalone Tarball:**
+  * Linux glibc: `openavx-<version>-linux-x86_64.tar.gz`
+  * Alpine musl: `openavx-<version>-linux-x86_64-musl.tar.gz`
+  * macOS Universal 2 (`arm64` + `x86_64`): `openavx-<version>-macos-universal.tar.gz`
   ```bash
-  tar -xzf openavx-0.2.1-linux-x86_64.tar.gz
-  sudo cp -r openavx-0.2.1-linux-x86_64/* /usr/local/
+  sudo tar -xzf openavx-<version>-<platform>.tar.gz --strip-components=1 -C /usr/local/
   ```
 * **Windows (`.zip`):** Extract and add `bin/` to your system `PATH`.
-
-### Homebrew (macOS & Linux)
-
-```bash
-brew install saifmukhtar/openavx/openavx
-```
 
 ### Build from Source
 
 **Prerequisites:** C99 compiler (`gcc`, `clang`, or MSVC) and CMake `>= 3.16`.
+*(Optional: install `libavcodec` / `ffmpeg-dev` if you want FFmpeg software codec fallback alongside native VideoToolbox, Media Foundation, and V4L2 M2M.)*
 
 ```bash
 git clone https://github.com/saifmukhtar/openavx.git
@@ -147,6 +186,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 sudo cmake --install build
+sudo ldconfig   # Linux: refresh shared library cache for /usr/local/lib
 ```
 
 ### Docker
@@ -154,7 +194,7 @@ sudo cmake --install build
 Run the discovery directory server in an Alpine container:
 
 ```bash
-docker run -d --name openavx-discovery --net=host openavx:latest --port 7959
+docker run -d --name openavx-discovery --net=host ghcr.io/saifmukhtar/openavx:latest --port 7959
 ```
 
 ---
@@ -173,7 +213,18 @@ See [`BENCHMARK.md`](BENCHMARK.md) for full empirical benchmarks, glass-to-glass
 * [`CLA.md`](CLA.md) — Contributor License Agreement terms and automated sign-off instructions.
 * [`CHANGELOG.md`](CHANGELOG.md) — Release notes and unreleased development updates.
 * [`SECURITY.md`](SECURITY.md) — Vulnerability disclosure policy.
+* [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Community standards and behavior expectations.
 * [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) — Attribution and notices for vendored and dynamically loaded components.
+
+---
+
+## Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+
+1. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for C99/C++11 style rules, build checks, and pull request guidelines.
+2. Follow the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+3. Sign off on the Contributor License Agreement in [`CLA.md`](CLA.md) when submitting pull requests.
 
 ---
 
@@ -184,3 +235,15 @@ OpenAVX is licensed under the **GNU Affero General Public License v3 with the Li
 * **Application Linking**: You may freely link `libopenavx` with independent applications, plugins (including OBS Studio), and commercial software without your own code becoming subject to the AGPL.
 * **Core Engine**: Any modifications or improvements made directly to OpenAVX itself must remain open-source under the AGPLv3.
 * **Third-Party Notices**: For third-party libraries and compatibility headers included or dynamically referenced by OpenAVX, see [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/#saifmukhtar/openavx&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=saifmukhtar/openavx&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=saifmukhtar/openavx&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=saifmukhtar/openavx&type=Date" />
+ </picture>
+</a>

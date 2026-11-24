@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-25
+
+### Fixed
+- **Windows Networking & Port Allocation**:
+  - Use `SO_EXCLUSIVEADDRUSE` on Windows TCP server listeners in `src/avx_socket.c` (`avx_socket_set_server_bind_opts`) instead of `SO_REUSEADDR`, preventing port hijacking across co-located transmitters and restoring dynamic port fallback.
+  - Added socket receive timeouts and Win32 socket initialization (`WSAStartup`) / POSIX compat macro fallbacks (`S_ISREG`, `S_ISDIR`, `strcasecmp`) for MSVC.
+- **Windows DirectShow, QPC Timer & Portability**:
+  - Fixed MSVC `C2375` linkage conflict in `src/avx_dshow_filter.c` using `#pragma comment(linker, "/EXPORT:...")`.
+  - Fixed 64-bit `QueryPerformanceCounter` multiplication overflow in `avx_time_ns()` and replaced hardcoded `/tmp` paths with `GetTempPathA()` in `openavx_config_test`.
+  - Resolved MSVC Media Foundation, rate control, audio, and SIMD export/linkage issues across tests.
+- **macOS & Linux Headless Portability**:
+  - Resolved macOS BSD socket / VideoToolbox compatibility and CoreMediaIO DAL struct alignment, plus headless ALSA teardown segfault on Linux.
+- **CI & Test Suite Hardening**:
+  - Updated `is_emulated_cpu()` in `test/openavx_simd_audit_test.c` to detect `qemu-aarch64` (`CPU implementer: 0x00`) inside `linux/arm64` Docker Buildx containers.
+  - Fixed stall-detection and backup-connection sequencing in `test/openavx_failover_test.c` and added CTest timeouts to prevent runner deadlocks.
+
+### Changed
+- **Documentation**:
+  - Refined `README.md` with an Architecture & CLI overview, minimal C99 library example, accurate multi-platform tarball/GHCR Docker instructions, expanded feature list, Contributing section, and Star History.
+
 ## [0.2.1] - 2026-11-24
 
 ### Fixed

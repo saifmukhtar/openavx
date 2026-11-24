@@ -17,7 +17,7 @@
 #include "avx_audio_codec.h"
 #include "avx_video_codec.h"
 
-#define OPENAVX_VERSION "openavx v0.2.1"
+#define OPENAVX_VERSION "openavx v0.2.2"
 #define AVX_MAX_SESSIONS 32
 #define AVX_DEFAULT_PORT 7960
 #define AVX_MDNS_PORT 5353

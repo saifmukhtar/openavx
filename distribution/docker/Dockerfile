@@ -27,9 +27,15 @@ RUN cmake -B build -S . \
 # Stage 2: Minimal Alpine Runtime Image
 FROM alpine:3.24 AS runtime
 
+LABEL org.opencontainers.image.source="https://github.com/saifmukhtar/openavx"
+LABEL org.opencontainers.image.description="OpenAVX (Open Audio-Video eXchange) Discovery & Transport Container"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 RUN apk add --no-cache \
     libgcc \
-    libstdc++ && \
+    libstdc++ \
+    ffmpeg-libavcodec \
+    opus && \
     addgroup -g 1000 openavx && \
     adduser -u 1000 -G openavx -s /bin/sh -D openavx
 

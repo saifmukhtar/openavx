@@ -1,8 +1,8 @@
 class Openavx < Formula
   desc "Open Audio-Video eXchange (OpenAVX) C99 high-performance IP streaming suite"
   homepage "https://github.com/saifmukhtar/openavx"
-  url "https://github.com/saifmukhtar/openavx/archive/refs/tags/v0.2.1.tar.gz"
-  sha256 "SKIP" # TODO: set tarball sha256 once v0.2.1 tag is published
+  url "https://github.com/saifmukhtar/openavx/archive/refs/tags/v0.2.2.tar.gz"
+  sha256 "SKIP" # TODO: set tarball sha256 once v0.2.2 tag is published
   license "AGPL-3.0-or-later WITH Classpath-exception-2.0"
   head "https://github.com/saifmukhtar/openavx.git", branch: "main"
 
@@ -43,6 +43,6 @@ class Openavx < Formula
       }
     EOS
     system ENV.cc, "test.c", "-I#{include}", "-L#{lib}", "-Wl,-rpath,#{lib}", "-lopenavx", "-o", "test"
-    assert_match "openavx v0.2.1", shell_output("./test")
+    assert_match "openavx v0.2.2", shell_output("./test")
   end
 end

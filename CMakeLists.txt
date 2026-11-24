@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 # Cross-Platform CMake Build System (Linux, macOS, Windows, BSD)
 # ==============================================================================
 project(openavx
-    VERSION 0.2.1
+    VERSION 0.2.2
     DESCRIPTION "Open Audio-Video eXchange Library"
     HOMEPAGE_URL "https://github.com/saifmukhtar/openavx"
     LANGUAGES C

@@ -788,7 +788,7 @@ void* avx_send_listen_worker(void* arg) {
                             (slot->transport == OAVX_TRANSPORT_UDP ? "udp" : "tcp");
         char xml[512];
         int xml_len = snprintf(xml, sizeof(xml),
-            "<%s name=\"%s\" port=\"%u\" version=\"0.2.1\">\n"
+            "<%s name=\"%s\" port=\"%u\" version=\"0.2.2\">\n"
             "  <capabilities video=\"1\" audio=\"1\" metadata=\"1\" transport=\"%s\" udp_port=\"%u\"/>\n"
             "</%s>\n",
             slot->wire_profile.handshake_tag, slot->name, slot->port,

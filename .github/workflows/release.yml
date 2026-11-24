@@ -167,17 +167,24 @@ jobs:
           if-no-files-found: error
 
   # ----------------------------------------------------------------------------
-  # 5. Multi-Arch Docker Container Build & Push to GHCR
+  # 5. Multi-Arch Docker Container Build (Native x86_64 & ARM64) & Push to GHCR
   # ----------------------------------------------------------------------------
   build-docker:
-    name: Build & Push Docker Container
-    runs-on: ubuntu-22.04
+    name: Build Docker Container (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-22.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v7
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -200,22 +207,95 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and Push Multi-Stage Alpine Container
+      - name: Build and Test Alpine Container (PR / Dispatch)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: docker/build-push-action@v7
         with:
           context: .
           file: distribution/docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          push: false
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and Push Digest to GHCR (Release Tag)
+        id: build
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: distribution/docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export Image Digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          echo -n "${digest}" > "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload Digest Artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+
+  merge-docker-manifest:
+    name: Merge Multi-Arch Docker Manifest
+    needs: build-docker
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Download Image Digests
+        uses: actions/download-artifact@v7
+        with:
+          pattern: docker-digests-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Create Multi-Arch Manifest List
+        working-directory: /tmp/digests
+        run: |
+          IMAGE_NAME=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          TAG_ARGS=""
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && TAG_ARGS="${TAG_ARGS} -t ${tag}"
+          done <<< "${{ steps.meta.outputs.tags }}"
+          DIGEST_ARGS=""
+          for f in *; do
+            DIGEST_ARGS="${DIGEST_ARGS} ${IMAGE_NAME}@sha256:${f}"
+          done
+          docker buildx imagetools create ${TAG_ARGS} ${DIGEST_ARGS}
 
   # ----------------------------------------------------------------------------
   # 6. Publish GitHub Release with Cross-Platform Checksums
   # ----------------------------------------------------------------------------
   publish-release:
     name: Publish Release & Universal Assets
-    needs: [build-linux-packages, build-alpine-musl-package, build-macos, build-windows, build-docker]
+    needs: [build-linux-packages, build-alpine-musl-package, build-macos, build-windows, merge-docker-manifest]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     steps:
