@@ -22,6 +22,26 @@
 #include <unistd.h>
 #include <time.h>
 
+#ifndef S_ISREG
+#if defined(_S_IFMT) && defined(_S_IFREG)
+#define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#elif defined(S_IFMT) && defined(S_IFREG)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#else
+#define S_ISREG(m) (((m) & 0170000) == 0100000)
+#endif
+#endif
+
+#ifndef S_ISDIR
+#if defined(_S_IFMT) && defined(_S_IFDIR)
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#elif defined(S_IFMT) && defined(S_IFDIR)
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#else
+#define S_ISDIR(m) (((m) & 0170000) == 0040000)
+#endif
+#endif
+
 #include "openavx.h"
 #include "avx_internal.h"
 #include "avx_wire.h"
@@ -351,6 +371,9 @@ static int run_directory_regression(const char *dirpath, void (*test_func)(const
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
+#ifdef _WIN32
+    avx_platform_sockets_init();
+#endif
     printf("\n=== OpenAVX Fuzz Corpus & Crash Regression Tests ===\n\n");
 
     const char *source_dir = OPENAVX_PROJECT_SOURCE_DIR;
