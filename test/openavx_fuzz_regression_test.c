@@ -164,7 +164,7 @@ static void test_fuzz_wire_socketpair(const uint8_t *data, size_t size) {
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0) {
         size_t send_len = size > 65536 ? 65536 : size;
-        (void)send(sv[0], data, send_len, 0);
+        (void)send(sv[0], (const char*)data, (int)send_len, 0);
         close(sv[0]);
 
         avx_rx_config_t cfg;

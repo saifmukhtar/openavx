@@ -49,8 +49,12 @@ static const char* find_tally_binary(bool symlink) {
     };
     const char* direct_candidates[] = {
         "./bin/openavx",
+        "./bin/openavx.exe",
+        "bin/openavx.exe",
         "./openavx",
-        "./build/bin/openavx"
+        "./openavx.exe",
+        "./build/bin/openavx",
+        "./build/bin/openavx.exe"
     };
 
     if (symlink) {
@@ -94,12 +98,16 @@ int main(void) {
     printf("    [+] 'openavx tally --help' executed successfully with complete usage documentation.\n");
 
     /* 2. Test Symlink Invocation */
+#ifndef _WIN32
     printf("[*] 2. Testing Multi-call Symlink 'openavx-tally'...\n");
     snprintf(cmd, sizeof(cmd), "%s --help", bin_sym);
     rc = run_cmd_capture(cmd, output, sizeof(output));
     assert(rc == 0);
     assert(strstr(output, "Tally Light Monitor") != NULL);
     printf("    [+] Multi-call symlink 'openavx-tally --help' confirmed functional.\n");
+#else
+    printf("[*] 2. Skipping Multi-call Symlink on Windows (symlinks not supported)...\n");
+#endif
 
     /* 3. Test Missing Argument Handling */
     printf("[*] 3. Testing Error Handling on Missing Target...\n");

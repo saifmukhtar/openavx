@@ -16,6 +16,7 @@
 
 #if defined(_WIN32)
     #include <winsock2.h>
+    #include <unistd.h>
 #else
     #include <poll.h>
     #include <unistd.h>

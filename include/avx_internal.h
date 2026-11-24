@@ -115,18 +115,18 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(
     oavx_audio_frame_t* audio_data,
     oavx_metadata_frame_t* metadata,
     uint32_t timeout_ms);
-void avx_rx_free_video(avx_rx_instance_t instance, const oavx_video_frame_t* video_data);
-void avx_rx_free_audio(avx_rx_instance_t instance, const oavx_audio_frame_t* audio_data);
-void avx_rx_free_metadata(avx_rx_instance_t instance, const oavx_metadata_frame_t* metadata);
-bool avx_rx_get_performance(avx_rx_instance_t instance, oavx_performance_t* total, oavx_performance_t* dropped);
-bool avx_rx_get_queue(avx_rx_instance_t instance, oavx_queue_t* total);
-void avx_rx_clear_connection_metadata(avx_rx_instance_t instance);
-void avx_rx_add_connection_metadata(avx_rx_instance_t instance, const oavx_metadata_frame_t* metadata);
-bool avx_rx_send_metadata(avx_rx_instance_t instance, const oavx_metadata_frame_t* metadata);
-bool avx_rx_set_tally(avx_rx_instance_t instance, const oavx_tally_t* tally);
-bool avx_rx_get_tally(avx_rx_instance_t instance, oavx_tally_t* tally, uint32_t timeout_ms);
-int avx_rx_get_connection_count(avx_rx_instance_t instance);
-const char* avx_rx_get_web_control(avx_rx_instance_t instance);
+OPENAVX_API void avx_rx_free_video(avx_rx_instance_t instance, const oavx_video_frame_t* video_data);
+OPENAVX_API void avx_rx_free_audio(avx_rx_instance_t instance, const oavx_audio_frame_t* audio_data);
+OPENAVX_API void avx_rx_free_metadata(avx_rx_instance_t instance, const oavx_metadata_frame_t* metadata);
+OPENAVX_API bool avx_rx_get_performance(avx_rx_instance_t instance, oavx_performance_t* total, oavx_performance_t* dropped);
+OPENAVX_API bool avx_rx_get_queue(avx_rx_instance_t instance, oavx_queue_t* total);
+OPENAVX_API void avx_rx_clear_connection_metadata(avx_rx_instance_t instance);
+OPENAVX_API void avx_rx_add_connection_metadata(avx_rx_instance_t instance, const oavx_metadata_frame_t* metadata);
+OPENAVX_API bool avx_rx_send_metadata(avx_rx_instance_t instance, const oavx_metadata_frame_t* metadata);
+OPENAVX_API bool avx_rx_set_tally(avx_rx_instance_t instance, const oavx_tally_t* tally);
+OPENAVX_API bool avx_rx_get_tally(avx_rx_instance_t instance, oavx_tally_t* tally, uint32_t timeout_ms);
+OPENAVX_API int avx_rx_get_connection_count(avx_rx_instance_t instance);
+OPENAVX_API const char* avx_rx_get_web_control(avx_rx_instance_t instance);
 
 /* PTZ & Remote Recording Controls (src/avx_recv_ex.c) */
 bool avx_rx_ptz_zoom(avx_rx_instance_t instance, float zoom_val);
@@ -163,30 +163,30 @@ OPENAVX_API const oavx_endpoint_t* avx_find_get_sources(avx_find_instance_t inst
 OPENAVX_API bool avx_find_wait(avx_find_instance_t instance, uint32_t timeout_ms);
 
 /* Matrix Router (src/avx_routing.c) */
-avx_router_instance_t avx_router_create(const avx_router_config_t* settings);
-void avx_router_destroy(avx_router_instance_t instance);
-bool avx_router_route(avx_router_instance_t instance, const oavx_endpoint_t* source);
-bool avx_router_clear(avx_router_instance_t instance);
+OPENAVX_API avx_router_instance_t avx_router_create(const avx_router_config_t* settings);
+OPENAVX_API void avx_router_destroy(avx_router_instance_t instance);
+OPENAVX_API bool avx_router_route(avx_router_instance_t instance, const oavx_endpoint_t* source);
+OPENAVX_API bool avx_router_clear(avx_router_instance_t instance);
 OPENAVX_API oavx_endpoint_t avx_router_get_source(avx_router_instance_t instance);
 
 /* Frame Synchronizer (src/avx_framesync.c) */
 OPENAVX_API avx_sync_instance_t avx_sync_create(avx_rx_instance_t receiver);
 OPENAVX_API void avx_sync_destroy(avx_sync_instance_t instance);
-void avx_sync_capture_video(avx_sync_instance_t instance, oavx_video_frame_t* frame, int field_type);
-void avx_sync_free_video(avx_sync_instance_t instance, oavx_video_frame_t* frame);
-void avx_sync_capture_audio(avx_sync_instance_t instance, oavx_audio_frame_t* frame, int sample_rate, int channels, int frames);
-void avx_sync_free_audio(avx_sync_instance_t instance, oavx_audio_frame_t* frame);
-int avx_sync_audio_queue_depth(avx_sync_instance_t instance);
+OPENAVX_API void avx_sync_capture_video(avx_sync_instance_t instance, oavx_video_frame_t* frame, int field_type);
+OPENAVX_API void avx_sync_free_video(avx_sync_instance_t instance, oavx_video_frame_t* frame);
+OPENAVX_API void avx_sync_capture_audio(avx_sync_instance_t instance, oavx_audio_frame_t* frame, int sample_rate, int channels, int frames);
+OPENAVX_API void avx_sync_free_audio(avx_sync_instance_t instance, oavx_audio_frame_t* frame);
+OPENAVX_API int avx_sync_audio_queue_depth(avx_sync_instance_t instance);
 
 /* Format Utilities (src/avx_utilities.c) */
-void avx_util_audio_to_interleaved_16s(const oavx_audio_frame_t* src, oavx_audio_frame_interleaved_16s_t* dst);
-void avx_util_audio_from_interleaved_16s(const oavx_audio_frame_interleaved_16s_t* src, oavx_audio_frame_t* dst);
-void avx_util_audio_to_interleaved_32f(const oavx_audio_frame_t* src, oavx_audio_frame_interleaved_32f_t* dst);
-void avx_util_audio_from_interleaved_32f(const oavx_audio_frame_interleaved_32f_t* src, oavx_audio_frame_t* dst);
-void avx_util_audio_to_interleaved_32s(const oavx_audio_frame_t* src, oavx_audio_frame_interleaved_32s_t* dst);
-void avx_util_audio_from_interleaved_32s(const oavx_audio_frame_interleaved_32s_t* src, oavx_audio_frame_t* dst);
-void avx_util_V210_to_P216(const oavx_video_frame_t* src, oavx_video_frame_t* dst);
-void avx_util_P216_to_V210(const oavx_video_frame_t* src, oavx_video_frame_t* dst);
+OPENAVX_API void avx_util_audio_to_interleaved_16s(const oavx_audio_frame_t* src, oavx_audio_frame_interleaved_16s_t* dst);
+OPENAVX_API void avx_util_audio_from_interleaved_16s(const oavx_audio_frame_interleaved_16s_t* src, oavx_audio_frame_t* dst);
+OPENAVX_API void avx_util_audio_to_interleaved_32f(const oavx_audio_frame_t* src, oavx_audio_frame_interleaved_32f_t* dst);
+OPENAVX_API void avx_util_audio_from_interleaved_32f(const oavx_audio_frame_interleaved_32f_t* src, oavx_audio_frame_t* dst);
+OPENAVX_API void avx_util_audio_to_interleaved_32s(const oavx_audio_frame_t* src, oavx_audio_frame_interleaved_32s_t* dst);
+OPENAVX_API void avx_util_audio_from_interleaved_32s(const oavx_audio_frame_interleaved_32s_t* src, oavx_audio_frame_t* dst);
+OPENAVX_API void avx_util_V210_to_P216(const oavx_video_frame_t* src, oavx_video_frame_t* dst);
+OPENAVX_API void avx_util_P216_to_V210(const oavx_video_frame_t* src, oavx_video_frame_t* dst);
 
 /* Internal Finder Session */
 typedef struct avx_find_ctx_t {
@@ -518,16 +518,16 @@ typedef struct avx_global_state_t {
 extern avx_global_state_t g_avx_state;
 
 /* Internal Helper Functions */
-avx_socket_t avx_socket_create_tcp_server(uint16_t port);
+OPENAVX_API avx_socket_t avx_socket_create_tcp_server(uint16_t port);
 OPENAVX_API avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t port);
 OPENAVX_API avx_socket_t avx_socket_connect_tcp(const char* host, uint16_t port);
-avx_socket_t avx_socket_connect_tcp_timeout(const char* host, uint16_t port, uint32_t timeout_ms);
-avx_socket_t avx_socket_start_nonblocking_connect(const char* host, uint16_t port, bool* connected_now);
-avx_socket_t avx_socket_create_mdns_multicast(void);
+OPENAVX_API avx_socket_t avx_socket_connect_tcp_timeout(const char* host, uint16_t port, uint32_t timeout_ms);
+OPENAVX_API avx_socket_t avx_socket_start_nonblocking_connect(const char* host, uint16_t port, bool* connected_now);
+OPENAVX_API avx_socket_t avx_socket_create_mdns_multicast(void);
 
 /* Multi-NIC & Network Interface Helpers */
-bool avx_net_resolve_interface_or_ip(const char* iface_or_ip, char* out_ip, size_t out_len);
-bool avx_net_get_default_ip(char* out_ip, size_t out_len);
+OPENAVX_API bool avx_net_resolve_interface_or_ip(const char* iface_or_ip, char* out_ip, size_t out_len);
+OPENAVX_API bool avx_net_get_default_ip(char* out_ip, size_t out_len);
 
 /* Packet Tracing & Zero-Sudo PCAP Generation */
 void avx_trace_packet(const char* direction, const char* tag, const void* data, size_t len);

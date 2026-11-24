@@ -46,6 +46,7 @@ static bool prog_matches(const char* base, const char* target) {
 }
 
 void openavx_cli_init(void) {
+    avx_platform_sockets_init();
     const char* env = getenv("OPENAVX_LOG_LEVEL");
     if (!env || env[0] == '\0') {
         oavx_set_log_level(OAVX_LOG_INFO);

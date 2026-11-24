@@ -100,6 +100,7 @@ static inline void avx_udp_tune_socket_buffers(avx_socket_t sock) {
  */
 avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool reuse)
 {
+    avx_platform_sockets_init();
     int opt = 1;
 
     /* Case A: Explicit IPv6 literal (e.g. "::1" or "[::1]" or "2001:...") */

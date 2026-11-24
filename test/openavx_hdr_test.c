@@ -12,6 +12,7 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include <dlfcn.h>
 #include "avx_platform.h"
 
 #include "openavx.h"

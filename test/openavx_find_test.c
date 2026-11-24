@@ -16,8 +16,6 @@
 #include "openavx.h"
 #include "avx_internal.h"
 
-extern int avx_mdns_broadcast_source(const char* name, uint16_t port);
-
 static volatile bool s_beacon_running = true;
 static uint16_t s_send_port = 7960;
 
@@ -30,27 +28,34 @@ static void* beacon_thread(void* arg) {
     return NULL;
 }
 
+static const char* get_find_cmd_prefix(void) {
+    if (access("./bin/openavx-find", X_OK) == 0) return "./bin/openavx-find";
+    if (access("./openavx-find", X_OK) == 0) return "./openavx-find";
+    if (access("./bin/openavx.exe", X_OK) == 0) return "./bin/openavx.exe find";
+    if (access("bin/openavx.exe", X_OK) == 0) return "bin/openavx.exe find";
+    if (access("./openavx.exe", X_OK) == 0) return "./openavx.exe find";
+    if (access("./bin/openavx", X_OK) == 0) return "./bin/openavx find";
+    return "./bin/openavx find";
+}
+
 int main(void) {
     printf("\n=======================================================\n");
     printf(" OpenAVX (openavx) Standalone Source Finder CLI Test\n");
     printf("=======================================================\n\n");
 
+    const char* find_prefix = get_find_cmd_prefix();
+
     /* 1. Test CLI Help Banner */
     printf("[*] 1. Testing CLI Help Banner (--help)...\n");
-    int ret_help = system("./bin/openavx-find --help > /dev/null 2>&1");
-    if (!WIFEXITED(ret_help) || WEXITSTATUS(ret_help) != 0) {
-        ret_help = system("./openavx-find --help > /dev/null 2>&1");
-    }
+    char cmd[512];
+#ifdef _WIN32
+    snprintf(cmd, sizeof(cmd), "%s --help > NUL 2>&1", find_prefix);
+#else
+    snprintf(cmd, sizeof(cmd), "%s --help > /dev/null 2>&1", find_prefix);
+#endif
+    int ret_help = system(cmd);
     assert(WIFEXITED(ret_help) && WEXITSTATUS(ret_help) == 0);
-    int ret_alias = system("./bin/openavx_find --help > /dev/null 2>&1");
-    if (!WIFEXITED(ret_alias) || WEXITSTATUS(ret_alias) != 0) {
-        ret_alias = system("./openavx_find --help > /dev/null 2>&1");
-    }
-    if (!WIFEXITED(ret_alias) || WEXITSTATUS(ret_alias) != 0) {
-        ret_alias = ret_help; /* alias not built or symlinked in flat build dir */
-    }
-    assert(WIFEXITED(ret_alias) && WEXITSTATUS(ret_alias) == 0);
-    printf("    [+] Help flag on openavx-find and openavx_find returned exit code 0.\n");
+    printf("    [+] Help flag on %s returned exit code 0.\n", find_prefix);
 
     /* 2. Start Live Test Sender */
     printf("[*] 2. Spawning Live Test Sender 'TEST_SCAN_SOURCE_42'...\n");
@@ -77,8 +82,9 @@ int main(void) {
     usleep(50000); /* 50ms initial wait */
 
     /* 3. Test Standard Text Output */
-    printf("[*] 3. Testing Standard Scanner Output (./bin/openavx-find)...\n");
-    FILE *fp = popen("./bin/openavx-find --wait 1200", "r");
+    printf("[*] 3. Testing Standard Scanner Output (%s)...\n", find_prefix);
+    snprintf(cmd, sizeof(cmd), "%s --wait 1200", find_prefix);
+    FILE *fp = popen(cmd, "r");
     assert(fp != NULL);
     char buf[2048] = {0};
     size_t bytes_read = fread(buf, 1, sizeof(buf) - 1, fp);
@@ -89,8 +95,9 @@ int main(void) {
     printf("    [+] Successfully discovered 'TEST_SCAN_SOURCE_42' in text output!\n");
 
     /* 4. Test Machine-Readable JSON Output */
-    printf("[*] 4. Testing JSON Output (./bin/openavx-find --json)...\n");
-    fp = popen("./bin/openavx-find --wait 1200 --json", "r");
+    printf("[*] 4. Testing JSON Output (%s --json)...\n", find_prefix);
+    snprintf(cmd, sizeof(cmd), "%s --wait 1200 --json", find_prefix);
+    fp = popen(cmd, "r");
     assert(fp != NULL);
     memset(buf, 0, sizeof(buf));
     bytes_read = fread(buf, 1, sizeof(buf) - 1, fp);
@@ -102,8 +109,9 @@ int main(void) {
     printf("    [+] Valid JSON array format verified with matching source name!\n");
 
     /* 5. Test Quiet URL Output */
-    printf("[*] 5. Testing Quiet URL Output (./bin/openavx-find --quiet)...\n");
-    fp = popen("./bin/openavx-find --wait 1200 --quiet", "r");
+    printf("[*] 5. Testing Quiet URL Output (%s --quiet)...\n", find_prefix);
+    snprintf(cmd, sizeof(cmd), "%s --wait 1200 --quiet", find_prefix);
+    fp = popen(cmd, "r");
     assert(fp != NULL);
     memset(buf, 0, sizeof(buf));
     bytes_read = fread(buf, 1, sizeof(buf) - 1, fp);

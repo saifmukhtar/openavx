@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "avx_platform.h"
 
 #include "openavx.h"
@@ -565,8 +567,8 @@ static void* mock_rtsp_server_thread(void *arg) {
 
     char buf[4096];
     while (srv->running) {
-        struct pollfd pfd = { client_fd, POLLIN, 0 };
-        if (poll(&pfd, 1, 100) <= 0) continue;
+        avx_pollfd_t pfd = { (avx_socket_t)client_fd, POLLIN, 0 };
+        if (avx_poll(&pfd, 1, 100) <= 0) continue;
 
         ssize_t n = recv(client_fd, buf, sizeof(buf) - 1, 0);
         if (n <= 0) break;
@@ -605,7 +607,7 @@ static void* mock_rtsp_server_thread(void *arg) {
                 0x12, 0x34, 0x56, 0x78, /* SSRC */
                 0x65, 0x88, 0x84, 0x00  /* NALU payload (IDR slice) */
             };
-            send(client_fd, rtp_video, sizeof(rtp_video), MSG_NOSIGNAL);
+            send(client_fd, (const char*)rtp_video, sizeof(rtp_video), MSG_NOSIGNAL);
         } else if ((uint8_t)buf[0] == 0x24 && (uint8_t)buf[1] == 0x01) {
             /* Received RTCP packet on channel 1 (PLI Keyframe request) */
             srv->pli_received = true;
@@ -629,7 +631,7 @@ static void test_rtsp_client(void) {
     ASSERT_TRUE(srv.server_fd >= 0);
 
     int opt = 1;
-    setsockopt(srv.server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(srv.server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 
     struct sockaddr_in sin = {0};
     sin.sin_family = AF_INET;
@@ -859,6 +861,7 @@ static void test_compressed_recv_pipeline(void) {
 }
 
 int main(void) {
+    avx_platform_sockets_init();
     printf("=== OpenAVX RFC 2326 RTP / RTSP Tests ===\n");
     printf("Codecs: H.264 / HEVC / AV1\n\n");
 

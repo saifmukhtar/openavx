@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "openavx.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,24 +43,24 @@ typedef struct avx_config_t {
  * 2. $HOME/.openavx/openavx.json
  * 3. /etc/openavx/openavx.json
  */
-void avx_config_init(void);
+OPENAVX_API void avx_config_init(void);
 
 /* Free/reset cached configuration */
-void avx_config_cleanup(void);
+OPENAVX_API void avx_config_cleanup(void);
 
 /* Get pointer to cached global configuration */
-const avx_config_t* avx_config_get(void);
+OPENAVX_API const avx_config_t* avx_config_get(void);
 
 /* Locate configuration file path according to standard precedence.
  * Returns true if file exists and is readable, populating out_path.
  */
-bool avx_config_find_path(char* out_path, size_t max_len);
+OPENAVX_API bool avx_config_find_path(char* out_path, size_t max_len);
 
 /* Pure in-memory JSON parser for openavx.json.
  * Populates out_cfg with parsed fields.
  * Returns true if valid JSON and configuration was parsed.
  */
-bool avx_config_parse_json(const char* json_str, avx_config_t* out_cfg);
+OPENAVX_API bool avx_config_parse_json(const char* json_str, avx_config_t* out_cfg);
 
 #ifdef __cplusplus
 }

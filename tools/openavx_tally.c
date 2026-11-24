@@ -200,6 +200,7 @@ static bool parse_http_url(const char* url, char* host_out, size_t host_sz, uint
 }
 
 static avx_socket_t http_connect(const char* host, uint16_t port, uint32_t timeout_ms) {
+    avx_platform_sockets_init();
     char port_str[16];
     snprintf(port_str, sizeof(port_str), "%u", port);
 

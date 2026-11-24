@@ -38,6 +38,20 @@ int main(int argc, char **argv)
     printf("[DSHOW TEST] Testing DirectShow Virtual Camera Filter DLL: %s\n", dll_path);
 
     HMODULE hDll = LoadLibraryA(dll_path);
+    if (!hDll && strncmp(dll_path, "lib", 3) != 0) {
+        char lib_name[512];
+        snprintf(lib_name, sizeof(lib_name), "lib%s", dll_path);
+        hDll = LoadLibraryA(lib_name);
+    }
+    if (!hDll && strstr(dll_path, "\\") == NULL && strstr(dll_path, "/") == NULL) {
+        char fallback[512];
+        snprintf(fallback, sizeof(fallback), "bin/%s", dll_path);
+        hDll = LoadLibraryA(fallback);
+        if (!hDll) {
+            snprintf(fallback, sizeof(fallback), "bin/lib%s", dll_path);
+            hDll = LoadLibraryA(fallback);
+        }
+    }
     if (!hDll) {
         fprintf(stderr, "[FAIL] Could not load DLL %s (error: %lu)\n", dll_path, GetLastError());
         return 1;

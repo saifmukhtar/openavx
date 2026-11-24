@@ -1890,6 +1890,7 @@ static void* avx_rtsp_server_worker(void *arg) {
 }
 
 OPENAVX_API avx_rtsp_server_t* avx_rtsp_server_create(const avx_rtsp_server_config_t *config) {
+    avx_platform_sockets_init();
     avx_rtsp_server_t *srv = (avx_rtsp_server_t*)calloc(1, sizeof(*srv));
     if (!srv) return NULL;
 

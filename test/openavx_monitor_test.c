@@ -7,11 +7,14 @@
  */
 
 #define _GNU_SOURCE
+#define _USE_MATH_DEFINES
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <math.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "avx_platform.h"
 
 #include "openavx.h"
@@ -32,7 +35,11 @@ static int run_monitor_cmd(const char* args) {
     int last_ret = -1;
     for (size_t i = 0; i < sizeof(candidates)/sizeof(candidates[0]); ++i) {
         if (access(candidates[i], X_OK) == 0) {
+#ifdef _WIN32
+            snprintf(cmd, sizeof(cmd), "%s %s > NUL 2>&1", candidates[i], args);
+#else
             snprintf(cmd, sizeof(cmd), "ASAN_OPTIONS=detect_leaks=0 %s %s > /dev/null 2>&1", candidates[i], args);
+#endif
             int ret = system(cmd);
             if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) return 0;
             last_ret = ret;
@@ -40,12 +47,19 @@ static int run_monitor_cmd(const char* args) {
     }
     const char* multi_candidates[] = {
         "./bin/openavx",
+        "./bin/openavx.exe",
+        "bin/openavx.exe",
         "./openavx",
+        "./openavx.exe",
         "./build/bin/openavx"
     };
     for (size_t i = 0; i < sizeof(multi_candidates)/sizeof(multi_candidates[0]); ++i) {
         if (access(multi_candidates[i], X_OK) == 0) {
+#ifdef _WIN32
+            snprintf(cmd, sizeof(cmd), "%s monitor %s > NUL 2>&1", multi_candidates[i], args);
+#else
             snprintf(cmd, sizeof(cmd), "ASAN_OPTIONS=detect_leaks=0 %s monitor %s > /dev/null 2>&1", multi_candidates[i], args);
+#endif
             int ret = system(cmd);
             if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) return 0;
             last_ret = ret;

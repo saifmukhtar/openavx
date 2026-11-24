@@ -165,7 +165,14 @@ static void test_rudp_simulated_loss_and_nack_recovery(void) {
 
     /* Drain initial packets from kernel socket buffer first */
     char drain_buf[2048];
+#if defined(_WIN32)
+    u_long avail = 0;
+    while (ioctlsocket(rx_sock, FIONREAD, &avail) == 0 && avail > 0) {
+        recv(rx_sock, drain_buf, sizeof(drain_buf), 0);
+    }
+#else
     while (recv(rx_sock, drain_buf, sizeof(drain_buf), MSG_DONTWAIT) > 0) {}
+#endif
 
     /* To test recovery cleanly, we create fresh receiver */
     avx_udp_rudp_receiver_destroy(r);

@@ -12,6 +12,8 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "avx_platform.h"
 
 #include "openavx.h"

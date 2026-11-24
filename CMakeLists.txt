@@ -8,8 +8,12 @@ project(openavx
     VERSION 0.2.1
     DESCRIPTION "Open Audio-Video eXchange Library"
     HOMEPAGE_URL "https://github.com/saifmukhtar/openavx"
-    LANGUAGES C CXX
+    LANGUAGES C
 )
+
+if(NOT CMAKE_CROSSCOMPILING OR DEFINED CMAKE_CXX_COMPILER)
+    enable_language(CXX OPTIONAL)
+endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -278,7 +282,7 @@ if(BUILD_TESTING)
             target_compile_options(${test_name} PRIVATE -UNDEBUG)
         endif()
         add_test(NAME ${test_name}
-            COMMAND "${CMAKE_CURRENT_BINARY_DIR}/bin/${test_name}"
+            COMMAND ${test_name}
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         )
     endmacro()
@@ -325,7 +329,10 @@ if(BUILD_TESTING)
     add_openavx_test(openavx_api_v3_test test/openavx_api_v3_test.c)
     add_openavx_test(openavx_config_test test/openavx_config_test.c)
     add_openavx_test(openavx_platform_test test/openavx_platform_test.c)
-    add_openavx_test(openavx_cpp_test test/openavx_cpp_test.cpp)
+    if(CMAKE_CXX_COMPILER_LOADED)
+        add_openavx_test(openavx_cpp_test test/openavx_cpp_test.cpp)
+        set_tests_properties(openavx_cpp_test PROPERTIES RUN_SERIAL TRUE)
+    endif()
     add_openavx_test(openavx_bench test/openavx_bench.c)
     add_executable(openavx_stream_bench test/openavx_stream_bench.c)
     target_include_directories(openavx_stream_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -359,6 +366,7 @@ if(BUILD_TESTING)
             src/avx_virtcam_ipc.c
             src/avx_log.c
         )
+        set_target_properties(openavx_dshow_filter PROPERTIES PREFIX "")
         target_include_directories(openavx_dshow_filter PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         target_compile_definitions(openavx_dshow_filter PRIVATE OPENAVX_EXPORTS)
         target_link_libraries(openavx_dshow_filter PRIVATE ole32 oleaut32 uuid strmiids)
@@ -399,7 +407,6 @@ if(BUILD_TESTING)
         openavx_find_test
         openavx_test_pattern_test
         openavx_router_test
-        openavx_cpp_test
         openavx_hdr_test
         openavx_framesync_util_test
         openavx_ptz_compat_test
@@ -453,7 +460,7 @@ if(ENABLE_FUZZING)
         # Add 5-second sanity fuzz run to ctest when testing is enabled
         if(BUILD_TESTING)
             add_test(NAME ${target_name}
-                COMMAND "${CMAKE_CURRENT_BINARY_DIR}/bin/${target_name}" -max_total_time=5
+                COMMAND ${target_name} -max_total_time=5
             )
         endif()
     endmacro()

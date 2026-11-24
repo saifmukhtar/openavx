@@ -246,8 +246,8 @@ static void test_rudp_e2ee_loopback(void)
 {
     printf("[*] Test 5: End-to-End RUDP Sender -> Receiver with Native E2EE...\n");
 
-    avx_socket_t tx_sock = avx_udp_create_socket(0, false);
-    avx_socket_t rx_sock = avx_udp_create_socket(0, false);
+    avx_socket_t tx_sock = avx_udp_create_socket_bind("127.0.0.1", 0, false);
+    avx_socket_t rx_sock = avx_udp_create_socket_bind("127.0.0.1", 0, false);
     assert(tx_sock != AVX_INVALID_SOCKET);
     assert(rx_sock != AVX_INVALID_SOCKET);
 
@@ -429,8 +429,8 @@ static void test_rudp_e2ee_mismatch_rejection(void)
 {
     printf("[*] Test 7: Encryption Mismatch Rejection (Plaintext vs Encrypted)...\n");
 
-    avx_socket_t tx_sock = avx_udp_create_socket(0, false);
-    avx_socket_t rx_sock = avx_udp_create_socket(0, false);
+    avx_socket_t tx_sock = avx_udp_create_socket_bind("127.0.0.1", 0, false);
+    avx_socket_t rx_sock = avx_udp_create_socket_bind("127.0.0.1", 0, false);
     assert(tx_sock != AVX_INVALID_SOCKET);
     assert(rx_sock != AVX_INVALID_SOCKET);
 

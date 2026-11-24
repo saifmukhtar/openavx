@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "openavx.h"
+#include "avx_platform.h"
 #include "avx_speedhq.h"
 #include "avx_color.h"
 
@@ -189,13 +190,16 @@ int main(void)
         .user_ctx = NULL
     };
 
-    /* Send compressed SpeedHQ-3 frame */
-    oavx_stream_send_video(p_send, &tx_frame);
-
-    /* Capture on receiver */
+    /* Send compressed SpeedHQ-3 frame and wait for capture */
     oavx_video_frame_t rx_frame;
     memset(&rx_frame, 0, sizeof(rx_frame));
-    oavx_frame_type_e frame_type = oavx_stream_receive(p_recv, &rx_frame, NULL, NULL, 3000);
+    oavx_frame_type_e frame_type = OAVX_FRAME_TYPE_NONE;
+    for (int attempt = 0; attempt < 50; attempt++) {
+        oavx_stream_send_video(p_send, &tx_frame);
+        frame_type = oavx_stream_receive(p_recv, &rx_frame, NULL, NULL, 100);
+        if (frame_type == OAVX_FRAME_TYPE_VIDEO) break;
+        avx_sleep_ms(20);
+    }
     assert(frame_type == OAVX_FRAME_TYPE_VIDEO);
     assert(rx_frame.planes[0] != NULL);
     assert(rx_frame.width == (uint32_t)width && rx_frame.height == (uint32_t)height);

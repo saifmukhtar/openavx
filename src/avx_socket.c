@@ -58,6 +58,13 @@ bool avx_net_resolve_interface_or_ip(const char* iface_or_ip, char* out_ip, size
     }
 
     /* 3. Match by interface name (e.g., "eth0", "lo", "enp47s0", "wlp46s0") */
+#if defined(AVX_OS_WINDOWS) || defined(_WIN32)
+    if (strcmp(iface_or_ip, "lo") == 0 || strcasecmp(iface_or_ip, "loopback") == 0 || strcasecmp(iface_or_ip, "localhost") == 0) {
+        strncpy(out_ip, "127.0.0.1", out_len - 1);
+        out_ip[out_len - 1] = '\0';
+        return true;
+    }
+#endif
 #if defined(AVX_OS_POSIX)
     struct ifaddrs *ifaddr = NULL, *ifa = NULL;
     if (getifaddrs(&ifaddr) == -1) {
@@ -103,6 +110,7 @@ bool avx_net_resolve_interface_or_ip(const char* iface_or_ip, char* out_ip, size
 /* Discovers local default outbound IP by querying kernel routing table via unconnected UDP probe. */
 bool avx_net_get_default_ip(char* out_ip, size_t out_len) {
     if (!out_ip || out_len == 0) return false;
+    avx_platform_sockets_init();
 
     /* 1. Query OS routing table using dummy UDP socket connect to 8.8.8.8 */
     avx_socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -168,6 +176,7 @@ bool avx_net_get_default_ip(char* out_ip, size_t out_len) {
 
 /* Binds non-blocking TCP server socket with SO_REUSEADDR, SO_REUSEPORT, and tuned TCP_NODELAY. */
 avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t port) {
+    avx_platform_sockets_init();
     int opt = 1;
     int buf_size = 16 * 1024 * 1024; /* 16 MB buffer for video streaming */
 
@@ -305,6 +314,7 @@ static struct addrinfo* avx_socket_resolve_tcp(const char* host, uint16_t port) 
 }
 
 static avx_socket_t avx_socket_open_tuned_tcp(const struct addrinfo *rp, bool nonblocking) {
+    avx_platform_sockets_init();
     avx_socket_t fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
     if (fd == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
@@ -441,6 +451,7 @@ avx_socket_t avx_socket_connect_tcp(const char* host, uint16_t port) {
 }
 
 avx_socket_t avx_socket_create_mdns_multicast(void) {
+    avx_platform_sockets_init();
     avx_socket_t fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 

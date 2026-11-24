@@ -45,6 +45,7 @@ static double get_time_ms(void) {
 /* TEST 1: SIGPIPE Behavior on writev() vs sendmsg(MSG_NOSIGNAL)             */
 /* ========================================================================= */
 
+#ifndef _WIN32
 static volatile sig_atomic_t g_sigpipe_delivered = 0;
 
 static void audit_sigpipe_handler(int sig) {
@@ -52,10 +53,12 @@ static void audit_sigpipe_handler(int sig) {
         g_sigpipe_delivered++;
     }
 }
+#endif
 
 static void test_audit_proof_sigpipe_vulnerability(void) {
     printf("\n[*] 1. SIGPIPE handling: writev() vs sendmsg(..., MSG_NOSIGNAL)\n");
 
+#ifndef _WIN32
     /* Install temporary SIGPIPE signal handler to count signals instead of dying */
     struct sigaction sa, old_sa;
     memset(&sa, 0, sizeof(sa));
@@ -105,6 +108,10 @@ static void test_audit_proof_sigpipe_vulnerability(void) {
     printf("  [+] PASS: sendmsg(..., MSG_NOSIGNAL) returns EPIPE with 0 SIGPIPE\n");
 
     close(sv[0]);
+    sigaction(SIGPIPE, &old_sa, NULL);
+#else
+    printf("  [*] Windows sockets do not deliver SIGPIPE signals; skipping POSIX signal check\n");
+#endif
 
     /* 2. Web Gateway Preview check */
     avx_web_server_config_t wcfg = {
@@ -117,8 +124,6 @@ static void test_audit_proof_sigpipe_vulnerability(void) {
     uint16_t port = avx_web_server_get_port(srv);
     printf("  [+] Web preview server bound to port %u\n", port);
     avx_web_server_destroy(srv);
-
-    sigaction(SIGPIPE, &old_sa, NULL);
 }
 
 /* ========================================================================= */
@@ -330,12 +335,20 @@ static void test_audit_proof_socket_teardown_semantics(void) {
 
     char buf[16] = "test";
     ssize_t s = send(sv[0], buf, sizeof(buf), MSG_NOSIGNAL);
+#ifdef _WIN32
+    int err = WSAGetLastError();
+    assert(s < 0 && (err == WSAESHUTDOWN || err == WSAECONNRESET || err == WSAECONNABORTED));
+    printf("  [+] PASS: send() after shutdown(SHUT_RDWR) failed with WSAGetLastError=%d\n", err);
+    closesocket(sv[0]);
+    closesocket(sv[1]);
+#else
     assert(s < 0 && (errno == EPIPE || errno == ECONNRESET));
     printf("  [+] PASS: send() after shutdown(SHUT_RDWR) failed with errno=%d (%s)\n",
            errno, strerror(errno));
 
     close(sv[0]);
     close(sv[1]);
+#endif
 }
 
 /* ========================================================================= */

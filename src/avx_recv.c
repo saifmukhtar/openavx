@@ -774,6 +774,26 @@ OPENAVX_API void avx_rx_destroy(avx_rx_instance_t p_instance) {
      * This unblocks any concurrent thread blocked inside recv_all() or poll(),
      * eliminating the teardown hang / deadlock. */
     slot->offline_mode = true;
+#if defined(AVX_OS_WINDOWS) || defined(_WIN32)
+    avx_socket_t conn_fd = slot->tcp_conn_fd;
+    if (conn_fd != AVX_INVALID_SOCKET) {
+        shutdown(conn_fd, AVX_SHUT_RDWR);
+        closesocket(conn_fd);
+        slot->tcp_conn_fd = AVX_INVALID_SOCKET;
+    }
+    avx_socket_t pend_fd = slot->pending_conn_fd;
+    if (pend_fd != AVX_INVALID_SOCKET) {
+        shutdown(pend_fd, AVX_SHUT_RDWR);
+        closesocket(pend_fd);
+        slot->pending_conn_fd = AVX_INVALID_SOCKET;
+    }
+    avx_socket_t udp_fd = slot->udp_sock;
+    if (udp_fd != AVX_INVALID_SOCKET) {
+        shutdown(udp_fd, AVX_SHUT_RDWR);
+        closesocket(udp_fd);
+        slot->udp_sock = AVX_INVALID_SOCKET;
+    }
+#else
     avx_socket_t conn_fd = slot->tcp_conn_fd;
     if (conn_fd != AVX_INVALID_SOCKET) {
         shutdown(conn_fd, AVX_SHUT_RDWR);
@@ -786,6 +806,7 @@ OPENAVX_API void avx_rx_destroy(avx_rx_instance_t p_instance) {
     if (udp_fd != AVX_INVALID_SOCKET) {
         shutdown(udp_fd, AVX_SHUT_RDWR);
     }
+#endif
 
     /* Wait if a decoding operation is actively running in capture */
     while (slot->decoding_video) {
@@ -1605,6 +1626,17 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(
     if (slot->tcp_conn_fd == AVX_INVALID_SOCKET || !slot->connected) {
         avx_mutex_unlock(&slot->lock);
         return OAVX_FRAME_TYPE_NONE;
+    }
+
+    if (poll_res > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
+        avx_socket_close(slot->tcp_conn_fd);
+        slot->tcp_conn_fd = AVX_INVALID_SOCKET;
+        slot->connected = false;
+        if (slot->has_failover && !slot->is_on_failover && slot->failover_url[0] != '\0') {
+            avx_rx_execute_failover(slot, "FAILOVER TRIGGERED (SOCKET DISCONNECT / POLLHUP)");
+        }
+        avx_mutex_unlock(&slot->lock);
+        return OAVX_FRAME_TYPE_ERROR;
     }
 
     if (poll_res <= 0 || !(pfd.revents & POLLIN)) {

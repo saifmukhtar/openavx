@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
 #include <unistd.h>
 #include "openavx.h"
 #include "avx_platform.h"
@@ -202,14 +203,19 @@ int main(void) {
         /* Prime stream with initial frame */
         oavx_video_frame_t v_pri;
         fill_test_video(&v_pri, 0x33);
-        oavx_stream_send_video(pri_tx, &v_pri);
-
         oavx_video_frame_t v_recv;
         oavx_audio_frame_t a_recv;
-        oavx_frame_type_t ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 500);
-        if (ft == OAVX_FRAME_TYPE_VIDEO) {
-            oavx_stream_release_video(rx, &v_recv);
+        oavx_frame_type_t ft = OAVX_FRAME_TYPE_NONE;
+        for (int i = 0; i < 20; ++i) {
+            oavx_stream_send_video(pri_tx, &v_pri);
+            ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 100);
+            if (ft == OAVX_FRAME_TYPE_VIDEO) {
+                oavx_stream_release_video(rx, &v_recv);
+                break;
+            }
+            avx_sleep_ms(20);
         }
+        assert(ft == OAVX_FRAME_TYPE_VIDEO);
         free(v_pri.planes[0]);
 
         /* Now: Keep primary TCP socket open, but stop sending frames (stream stall) */
@@ -292,14 +298,19 @@ int main(void) {
         /* Prime stream: frame from primary */
         oavx_video_frame_t v_pri;
         fill_test_video(&v_pri, 0x55);
-        oavx_stream_send_video(pri_tx, &v_pri);
-
         oavx_video_frame_t v_recv;
         oavx_audio_frame_t a_recv;
-        oavx_frame_type_t ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 500);
-        if (ft == OAVX_FRAME_TYPE_VIDEO) {
-            oavx_stream_release_video(rx, &v_recv);
+        oavx_frame_type_t ft = OAVX_FRAME_TYPE_NONE;
+        for (int i = 0; i < 20; ++i) {
+            oavx_stream_send_video(pri_tx, &v_pri);
+            ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 100);
+            if (ft == OAVX_FRAME_TYPE_VIDEO) {
+                oavx_stream_release_video(rx, &v_recv);
+                break;
+            }
+            avx_sleep_ms(20);
         }
+        assert(ft == OAVX_FRAME_TYPE_VIDEO);
         free(v_pri.planes[0]);
 
         /* Terminate primary stream */

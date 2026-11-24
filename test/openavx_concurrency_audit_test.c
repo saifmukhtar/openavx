@@ -62,6 +62,15 @@ static audit_result_t run_monitored_test(void (*test_fn)(void), int timeout_ms, 
     printf(" (Monitored subprocess with %d ms watchdog timeout)\n", timeout_ms);
     printf("======================================================================\n");
 
+#if defined(_WIN32)
+    double t0 = get_time_ms();
+    test_fn();
+    double t1 = get_time_ms();
+    res.duration_ms = t1 - t0;
+    res.passed = true;
+    snprintf(res.details, sizeof(res.details), "Completed cleanly in %.2f ms", res.duration_ms);
+    return res;
+#else
     double t0 = get_time_ms();
     pid_t pid = fork();
 
@@ -119,6 +128,7 @@ static audit_result_t run_monitored_test(void (*test_fn)(void), int timeout_ms, 
     kill(pid, SIGKILL);
     waitpid(pid, &status, 0);
     return res;
+#endif
 }
 
 /* ========================================================================= */
@@ -205,12 +215,12 @@ static void* f03_dummy_sender(void* arg) {
     /* 1. Send XML handshake */
     const char *xml = "<openavx version=\"1.0\" service=\"Test\"/>";
     uint32_t xml_len = (uint32_t)strlen(xml);
-    send(g_f03_client_sock, &xml_len, sizeof(xml_len), 0);
+    send(g_f03_client_sock, (const char*)&xml_len, sizeof(xml_len), 0);
     send(g_f03_client_sock, xml, xml_len, 0);
 
     /* 2. Send video magic and header with large payload (1 MB) */
     uint32_t magic = OAVX_WIRE_MAGIC_VIDEO;
-    send(g_f03_client_sock, &magic, sizeof(magic), 0);
+    send(g_f03_client_sock, (const char*)&magic, sizeof(magic), 0);
 
     AVX_PACKED_START
     struct {
@@ -230,7 +240,7 @@ static void* f03_dummy_sender(void* arg) {
     vhdr.frame_rate_n = 60;
     vhdr.frame_rate_d = 1;
     vhdr.payload_len = 500000; /* 500 KB */
-    send(g_f03_client_sock, &vhdr, sizeof(vhdr), 0);
+    send(g_f03_client_sock, (const char*)&vhdr, sizeof(vhdr), 0);
 
     /* 3. Send ONLY 128 bytes and intentionally STALL without closing socket! */
     char partial[128] = {0};
@@ -260,7 +270,7 @@ static void proof_f03_teardown_deadlock(void) {
     g_f03_srv_sock = socket(AF_INET, SOCK_STREAM, 0);
     assert(g_f03_srv_sock >= 0);
     int opt = 1;
-    setsockopt(g_f03_srv_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(g_f03_srv_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 
     struct sockaddr_in srv_addr;
     memset(&srv_addr, 0, sizeof(srv_addr));

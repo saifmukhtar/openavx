@@ -2295,13 +2295,20 @@ OPENAVX_API bool avx_web_server_feed_frame(
 #endif
         ssize_t sent = send(c->fd, (const char*)server->frag_buf, frag_len, send_flags);
         if (sent < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                /* Client socket buffer full: drop frame to prevent lagging/stall */
+            int err = avx_socket_errno();
+#if defined(AVX_OS_WINDOWS) || defined(_WIN32)
+            if (err == WSAEWOULDBLOCK) {
                 continue;
-            } else if (errno == EPIPE || errno == ECONNRESET) {
-                /* Browser tab closed */
+            } else if (err == WSAECONNRESET || err == WSAESHUTDOWN || err == WSAECONNABORTED || err == WSAENOTCONN || err == WSAEINTR) {
                 close_client_locked(c);
             }
+#else
+            if (err == EAGAIN || err == EWOULDBLOCK) {
+                continue;
+            } else if (err == EPIPE || err == ECONNRESET) {
+                close_client_locked(c);
+            }
+#endif
         }
     }
 

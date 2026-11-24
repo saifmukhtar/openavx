@@ -122,9 +122,11 @@ typedef ULONG avx_nfds_t;
 #define MSG_NOSIGNAL 0
 #endif
 
+#if defined(AVX_OS_WINDOWS) || defined(_WIN32)
 #if defined(_MSC_VER)
 #ifndef strtok_r
 #define strtok_r(s, d, p) strtok_s(s, d, p)
+#endif
 #endif
 #ifndef strcasecmp
 #define strcasecmp _stricmp
@@ -263,9 +265,11 @@ typedef nfds_t avx_nfds_t;
 #define MSG_NOSIGNAL 0
 #endif
 
+#if defined(AVX_OS_WINDOWS) || defined(_WIN32)
 #if defined(_MSC_VER)
 #ifndef strtok_r
 #define strtok_r(s, d, p) strtok_s(s, d, p)
+#endif
 #endif
 #ifndef strcasecmp
 #define strcasecmp _stricmp

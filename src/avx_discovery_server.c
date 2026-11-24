@@ -610,6 +610,7 @@ static void* discovery_relay_worker(void *arg)
 
 avx_discovery_server_t* avx_discovery_server_create_ex(const avx_discovery_server_config_t *cfg)
 {
+    avx_platform_sockets_init();
     avx_discovery_server_t *srv = calloc(1, sizeof(avx_discovery_server_t));
     if (!srv) return NULL;
 

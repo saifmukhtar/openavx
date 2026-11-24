@@ -170,7 +170,7 @@ static void test_lazy_simulcast_lifecycle(void) {
 
     /* Read initial transmitter handshake XML */
     uint32_t xml_len = 0;
-    ssize_t r1 = recv(client_fd, &xml_len, sizeof(xml_len), MSG_WAITALL);
+    ssize_t r1 = recv(client_fd, (char*)&xml_len, sizeof(xml_len), MSG_WAITALL);
     assert(r1 == (ssize_t)sizeof(xml_len));
     assert(xml_len > 0 && xml_len < 4096);
 
@@ -197,11 +197,13 @@ static void test_lazy_simulcast_lifecycle(void) {
     mhdr.timecode = 0;
     mhdr.payload_len = (uint32_t)rev_len;
 
-    send(client_fd, &mhdr, sizeof(mhdr), 0);
+    send(client_fd, (const char*)&mhdr, sizeof(mhdr), 0);
     send(client_fd, rev_xml, rev_len, 0);
 
     /* Allow reverse receiver worker thread to process client XML */
-    avx_sleep_ms(80);
+    for (int retry = 0; retry < 50 && avx_tx_get_wan_client_count(tx) != 1; ++retry) {
+        avx_sleep_ms(20);
+    }
 
     /* WAN client count should now be 1 */
     int wan_clients = avx_tx_get_wan_client_count(tx);
@@ -224,10 +226,12 @@ static void test_lazy_simulcast_lifecycle(void) {
     }
 
     /* Now disconnect the client */
-    close(client_fd);
+    avx_socket_close(client_fd);
 
     /* Allow listener/worker to detect disconnect */
-    avx_sleep_ms(150);
+    for (int retry = 0; retry < 50 && avx_tx_get_wan_client_count(tx) != 0; ++retry) {
+        avx_sleep_ms(20);
+    }
 
     /* Send frame to trigger refcount and lifecycle check */
     avx_tx_send_video(tx, &vf);
@@ -271,7 +275,7 @@ static void test_inflight_profile_migration(void) {
     assert(rx != NULL);
 
     /* Allow receiver to connect */
-    avx_sleep_ms(100);
+    avx_sleep_ms(150);
 
     /* Send test frame */
     size_t frame_bytes = 1280 * 720 * 2;
@@ -301,7 +305,9 @@ static void test_inflight_profile_migration(void) {
     assert(req_ok == true);
 
     /* Allow reverse worker to process request */
-    avx_sleep_ms(80);
+    for (int retry = 0; retry < 50 && avx_tx_get_wan_client_count(tx) != 1; ++retry) {
+        avx_sleep_ms(20);
+    }
 
     /* WAN client count should now be 1 */
     assert(avx_tx_get_wan_client_count(tx) == 1);
@@ -321,7 +327,10 @@ static void test_inflight_profile_migration(void) {
     req_ok = avx_rx_request_profile(rx, "lan");
     assert(req_ok == true);
 
-    avx_sleep_ms(80);
+    /* Allow reverse worker to process demotion */
+    for (int retry = 0; retry < 50 && (avx_tx_get_wan_client_count(tx) != 0 || avx_tx_is_wan_encoder_active(tx)); ++retry) {
+        avx_sleep_ms(20);
+    }
 
     /* WAN client count should now be 0 */
     assert(avx_tx_get_wan_client_count(tx) == 0);
