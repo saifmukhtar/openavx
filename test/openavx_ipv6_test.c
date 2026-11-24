@@ -11,10 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#endif
 
 #include "openavx.h"
 #include "avx_platform.h"
@@ -257,7 +259,7 @@ static void test_ipv6_end_to_end_rudp_stream(void) {
     assert(rx != NULL);
 
     /* Wait for RUDP handshake */
-    usleep(150000);
+    avx_sleep_ms(150);
 
     /* Send Video Frame (320x240 UYVY) */
     size_t v_bytes = 320 * 240 * 2;
@@ -325,7 +327,7 @@ static void test_ipv6_discovery_server(void) {
     assert(strcmp(urls[0], "[::1]:7980") == 0);
     printf("  [+] Queried source catalog via IPv6: %s -> %s\n", names[0], urls[0]);
 
-    close(reg_fd);
+    avx_socket_close(reg_fd);
     avx_discovery_server_destroy(srv);
 }
 

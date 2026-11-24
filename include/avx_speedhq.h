@@ -54,98 +54,98 @@ OPENAVX_API bool avx_speedhq_init(void);
  * Sets the default SpeedHQ quantization quality (20-98, default: 96).
  * Lower quality drastically reduces wire bitrate for congested/WAN links.
  */
-void avx_speedhq_set_quality(uint8_t quality);
-uint8_t avx_speedhq_get_quality(void);
+OPENAVX_API void avx_speedhq_set_quality(uint8_t quality);
+OPENAVX_API uint8_t avx_speedhq_get_quality(void);
 
 /**
  * Returns true if native SIMD hardware acceleration (AVX2/NEON) is active.
  */
-bool avx_speedhq_has_acceleration(void);
+OPENAVX_API bool avx_speedhq_has_acceleration(void);
 
 /**
  * High-performance standalone encoder:
  * Compresses packed UYVY 4:2:2 frame to SpeedHQ-2 (SHQ2) bitstream.
  * Uses native SIMD (AVX2/NEON) vectorization.
  */
-int avx_speedhq_encode(int width, int height,
-                       const uint8_t *uyvy_data,
-                       uint8_t *out_buf, size_t out_max,
-                       size_t *out_size);
+OPENAVX_API int avx_speedhq_encode(int width, int height,
+                                  const uint8_t *uyvy_data,
+                                  uint8_t *out_buf, size_t out_max,
+                                  size_t *out_size);
 
 /**
  * High-performance standalone decoder:
  * Decompresses SpeedHQ-2 (SHQ2) bitstream to packed UYVY 4:2:2.
  * Uses native SIMD (AVX2/NEON) vectorization.
  */
-int avx_speedhq_decode(int width, int height,
-                       const uint8_t *shq_data, size_t shq_size,
-                       uint8_t *uyvy_out);
+OPENAVX_API int avx_speedhq_decode(int width, int height,
+                                  const uint8_t *shq_data, size_t shq_size,
+                                  uint8_t *uyvy_out);
 
 /**
  * Pure C99 standalone fallback encoder (zero dependencies).
  */
-int avx_speedhq_encode_c99(int width, int height,
-                           const uint8_t *uyvy_data,
-                           uint8_t *out_buf, size_t out_max,
-                           size_t *out_size);
+OPENAVX_API int avx_speedhq_encode_c99(int width, int height,
+                                      const uint8_t *uyvy_data,
+                                      uint8_t *out_buf, size_t out_max,
+                                      size_t *out_size);
 
 /**
  * Pure C99 standalone fallback decoder (zero dependencies).
  */
-int avx_speedhq_decode_c99(int width, int height,
-                           const uint8_t *shq_data, size_t shq_size,
-                           uint8_t *uyvy_out);
+OPENAVX_API int avx_speedhq_decode_c99(int width, int height,
+                                      const uint8_t *shq_data, size_t shq_size,
+                                      uint8_t *uyvy_out);
 
 /**
  * Extended high-performance standalone encoder:
  * Compresses packed UYVY 4:2:2 frame and optional alpha plane to SpeedHQ (SHQ0-SHQ9) bitstream.
  */
-int avx_speedhq_encode_ex(uint32_t fourcc, int width, int height,
-                          const uint8_t *uyvy_data, const uint8_t *alpha_data,
-                          uint8_t *out_buf, size_t out_max,
-                          size_t *out_size);
+OPENAVX_API int avx_speedhq_encode_ex(uint32_t fourcc, int width, int height,
+                                     const uint8_t *uyvy_data, const uint8_t *alpha_data,
+                                     uint8_t *out_buf, size_t out_max,
+                                     size_t *out_size);
 
 /**
  * Strided and per-instance quality SpeedHQ encoder:
  * `uyvy_stride == 0` defaults to width * 2; `alpha_stride == 0` defaults to width;
  * `quality == 0` inherits the global default from avx_speedhq_get_quality().
  */
-int avx_speedhq_encode_strided_ex(uint32_t fourcc, int width, int height,
-                                  const uint8_t *uyvy_data, size_t uyvy_stride,
-                                  const uint8_t *alpha_data, size_t alpha_stride,
-                                  uint8_t quality,
-                                  uint8_t *out_buf, size_t out_max,
-                                  size_t *out_size);
+OPENAVX_API int avx_speedhq_encode_strided_ex(uint32_t fourcc, int width, int height,
+                                             const uint8_t *uyvy_data, size_t uyvy_stride,
+                                             const uint8_t *alpha_data, size_t alpha_stride,
+                                             uint8_t quality,
+                                             uint8_t *out_buf, size_t out_max,
+                                             size_t *out_size);
 
 /**
  * Extended high-performance standalone decoder:
  * Decompresses SpeedHQ bitstream to packed UYVY 4:2:2 and optional alpha plane.
  */
-int avx_speedhq_decode_ex(uint32_t fourcc, int width, int height,
-                          const uint8_t *shq_data, size_t shq_size,
-                          uint8_t *uyvy_out, uint8_t *alpha_out,
-                          bool *p_has_alpha);
+OPENAVX_API int avx_speedhq_decode_ex(uint32_t fourcc, int width, int height,
+                                     const uint8_t *shq_data, size_t shq_size,
+                                     uint8_t *uyvy_out, uint8_t *alpha_out,
+                                     bool *p_has_alpha);
 
 /**
  * Extended pure C99 standalone fallback encoder.
  */
-int avx_speedhq_encode_c99_ex(uint32_t fourcc, int width, int height,
-                              const uint8_t *uyvy_data, const uint8_t *alpha_data,
-                              uint8_t *out_buf, size_t out_max,
-                              size_t *out_size);
+OPENAVX_API int avx_speedhq_encode_c99_ex(uint32_t fourcc, int width, int height,
+                                         const uint8_t *uyvy_data, const uint8_t *alpha_data,
+                                         uint8_t *out_buf, size_t out_max,
+                                         size_t *out_size);
 
 /**
  * Extended pure C99 standalone fallback decoder.
  */
-int avx_speedhq_decode_c99_ex(uint32_t fourcc, int width, int height,
-                              const uint8_t *shq_data, size_t shq_size,
-                              uint8_t *uyvy_out, uint8_t *alpha_out,
-                              bool *p_has_alpha);
+OPENAVX_API int avx_speedhq_decode_c99_ex(uint32_t fourcc, int width, int height,
+                                         const uint8_t *shq_data, size_t shq_size,
+                                         uint8_t *uyvy_out, uint8_t *alpha_out,
+                                         bool *p_has_alpha);
 
 /**
  * Free any global codec resources.
  */
-void avx_speedhq_destroy(void);
+OPENAVX_API void avx_speedhq_destroy(void);
 
 #ifdef __cplusplus
 }

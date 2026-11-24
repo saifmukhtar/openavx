@@ -16,6 +16,7 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include "avx_platform.h"
 #include "avx_simd.h"
 #include "avx_color.h"
 #include "avx_audio.h"
@@ -23,9 +24,7 @@
 #include "avx_crypto.h"
 
 static double get_time_sec(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+    return (double)avx_time_ns() * 1e-9;
 }
 
 static void fill_random_bytes(uint8_t *buf, size_t size, uint32_t seed) {

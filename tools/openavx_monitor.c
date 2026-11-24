@@ -292,11 +292,16 @@ int openavx_cmd_monitor(int argc, char** argv) {
     openavx_cli_set_quiet(quiet);
 
     /* Signal handlers for clean terminal restore */
+#ifndef _WIN32
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handle_signal;
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
+#else
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
+#endif
 
     /* Initialize OpenAVX context engine */
     oavx_context_t *ctx = oavx_context_create();

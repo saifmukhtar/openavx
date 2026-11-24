@@ -131,6 +131,20 @@ typedef ULONG avx_nfds_t;
 #ifndef strncasecmp
 #define strncasecmp _strnicmp
 #endif
+static inline char* avx_strcasestr_impl(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return NULL;
+    if (*needle == '\0') return (char*)haystack;
+    size_t nlen = strlen(needle);
+    for (; *haystack != '\0'; ++haystack) {
+        if (_strnicmp(haystack, needle, nlen) == 0) {
+            return (char*)haystack;
+        }
+    }
+    return NULL;
+}
+#ifndef strcasestr
+#define strcasestr avx_strcasestr_impl
+#endif
 #include <intrin.h>
 #ifndef __sync_synchronize
 #define __sync_synchronize() MemoryBarrier()
@@ -155,6 +169,49 @@ static inline int avx_gettimeofday(struct timeval *tv, void *tz) {
 }
 #ifndef gettimeofday
 #define gettimeofday(tv, tz) avx_gettimeofday((tv), (tz))
+#endif
+
+#ifndef CLOCK_MONOTONIC
+#define CLOCK_MONOTONIC 1
+#endif
+#ifndef CLOCK_REALTIME
+#define CLOCK_REALTIME 0
+#endif
+
+static inline int avx_compat_clock_gettime(int clk_id, struct timespec *ts) {
+    if (!ts) return -1;
+    if (clk_id == CLOCK_MONOTONIC) {
+        LARGE_INTEGER freq, count;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&count);
+        ts->tv_sec = (time_t)(count.QuadPart / freq.QuadPart);
+        ts->tv_nsec = (long)(((count.QuadPart % freq.QuadPart) * 1000000000LL) / freq.QuadPart);
+        return 0;
+    } else {
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        ULARGE_INTEGER u;
+        u.LowPart = ft.dwLowDateTime;
+        u.HighPart = ft.dwHighDateTime;
+        uint64_t t = u.QuadPart - 116444736000000000ULL;
+        ts->tv_sec = (time_t)(t / 10000000ULL);
+        ts->tv_nsec = (long)((t % 10000000ULL) * 100);
+        return 0;
+    }
+}
+#ifndef clock_gettime
+#define clock_gettime(clk, ts) avx_compat_clock_gettime((clk), (ts))
+#endif
+
+static inline int avx_compat_nanosleep(const struct timespec *req, struct timespec *rem) {
+    (void)rem;
+    if (!req) return -1;
+    DWORD ms = (DWORD)(req->tv_sec * 1000 + (req->tv_nsec + 999999) / 1000000);
+    Sleep(ms);
+    return 0;
+}
+#ifndef nanosleep
+#define nanosleep(req, rem) avx_compat_nanosleep((req), (rem))
 #endif
 
 #else /* POSIX (Linux, macOS, BSD) */

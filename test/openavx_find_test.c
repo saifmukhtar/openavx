@@ -71,9 +71,9 @@ int main(void) {
         const char *colon = strchr(ep->address, ':');
         if (colon) s_send_port = (uint16_t)atoi(colon + 1);
     }
-    pthread_t th;
+    avx_thread_t th;
     s_beacon_running = true;
-    pthread_create(&th, NULL, beacon_thread, NULL);
+    avx_thread_create(&th, beacon_thread, NULL);
     usleep(50000); /* 50ms initial wait */
 
     /* 3. Test Standard Text Output */
@@ -115,7 +115,7 @@ int main(void) {
 
     /* 6. Clean up */
     s_beacon_running = false;
-    pthread_join(th, NULL);
+    avx_thread_join(th);
     oavx_stream_close(p_send);
     oavx_context_destroy(ctx);
 

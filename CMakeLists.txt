@@ -65,6 +65,7 @@ set(SYSTEM_LIBS "")
 
 if(WIN32)
     list(APPEND SYSTEM_LIBS ws2_32 mfuuid)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/compat/win32)
 elseif(UNIX)
     # Math library
     find_library(LIBM m)
@@ -291,19 +292,19 @@ if(BUILD_TESTING)
     add_openavx_test(openavx_loopback_test test/openavx_loopback_test.c)
 
     # 2. Codec and alpha verification
-    add_openavx_test(openavx_speedhq_test test/openavx_speedhq_test.c src/avx_speedhq.c)
+    add_openavx_test(openavx_speedhq_test test/openavx_speedhq_test.c)
     target_link_libraries(openavx_speedhq_test PRIVATE ${CMAKE_DL_LIBS})
     add_openavx_test(openavx_speedhq_alpha_test test/openavx_speedhq_alpha_test.c)
     add_openavx_test(openavx_compressed_loopback_test test/openavx_compressed_loopback_test.c)
 
     # 3. Discovery and networking
-    add_openavx_test(openavx_discovery_udp_test test/openavx_discovery_udp_test.c src/avx_udp.c src/avx_socket.c)
-    add_openavx_test(openavx_discovery_server_test test/openavx_discovery_server_test.c src/avx_discovery_server.c src/avx_socket.c)
+    add_openavx_test(openavx_discovery_udp_test test/openavx_discovery_udp_test.c)
+    add_openavx_test(openavx_discovery_server_test test/openavx_discovery_server_test.c)
     add_openavx_test(openavx_mdns_discovery_test test/openavx_mdns_discovery_test.c)
 
     # 4. Metadata, tally, routing, and color
     add_openavx_test(openavx_metadata_tally_test test/openavx_metadata_tally_test.c)
-    add_openavx_test(openavx_alpha_color_test test/openavx_alpha_color_test.c src/avx_color.c)
+    add_openavx_test(openavx_alpha_color_test test/openavx_alpha_color_test.c)
     add_openavx_test(openavx_routing_test test/openavx_routing_test.c)
 
     # 5. CLI tools verification
@@ -329,7 +330,7 @@ if(BUILD_TESTING)
     add_executable(openavx_stream_bench test/openavx_stream_bench.c)
     target_include_directories(openavx_stream_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(openavx_stream_bench PRIVATE openavx Threads::Threads ${SYSTEM_LIBS})
-    add_openavx_test(openavx_audio_test test/openavx_audio_test.c src/avx_audio.c src/avx_simd.c)
+    add_openavx_test(openavx_audio_test test/openavx_audio_test.c)
     add_openavx_test(openavx_rtsp_test test/openavx_rtsp_test.c)
     add_openavx_test(openavx_hdr_test test/openavx_hdr_test.c)
     add_openavx_test(openavx_framesync_util_test test/openavx_framesync_util_test.c)
@@ -338,7 +339,7 @@ if(BUILD_TESTING)
     add_openavx_test(oavx_async_fd_test test/oavx_async_fd_test.c)
     add_openavx_test(oavx_telemetry_test test/oavx_telemetry_test.c)
     add_openavx_test(oavx_multiclient_test test/oavx_multiclient_test.c)
-    add_openavx_test(openavx_multinic_test test/openavx_multinic_test.c src/avx_discovery_server.c src/avx_socket.c)
+    add_openavx_test(openavx_multinic_test test/openavx_multinic_test.c)
     add_openavx_test(openavx_rudp_test test/openavx_rudp_test.c)
     add_openavx_test(openavx_fec_test test/openavx_fec_test.c)
     add_openavx_test(openavx_rate_control_test test/openavx_rate_control_test.c)
@@ -357,11 +358,11 @@ if(BUILD_TESTING)
         )
         target_include_directories(openavx_dshow_filter PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         target_compile_definitions(openavx_dshow_filter PRIVATE OPENAVX_EXPORTS)
-        target_link_libraries(openavx_dshow_filter PRIVATE ole32 oleaut32 uuid)
+        target_link_libraries(openavx_dshow_filter PRIVATE ole32 oleaut32 uuid strmiids)
         add_openavx_test(openavx_dshow_test test/openavx_dshow_test.c)
-        target_link_libraries(openavx_dshow_test PRIVATE ole32 oleaut32 uuid)
+        target_link_libraries(openavx_dshow_test PRIVATE ole32 oleaut32 uuid strmiids)
     endif()
-    add_openavx_test(openavx_ipv6_test test/openavx_ipv6_test.c src/avx_discovery_server.c src/avx_socket.c)
+    add_openavx_test(openavx_ipv6_test test/openavx_ipv6_test.c)
     add_openavx_test(openavx_congestion_test test/openavx_congestion_test.c)
     add_openavx_test(openavx_failover_test test/openavx_failover_test.c)
     add_openavx_test(oavx_stream_rudp_test test/oavx_stream_rudp_test.c)
@@ -372,7 +373,7 @@ if(BUILD_TESTING)
     add_openavx_test(openavx_simulcast_test test/openavx_simulcast_test.c)
 
     # 7. Permanent 174M Fuzzing Corpus & Crash Artifact Regression Suite
-    add_openavx_test(openavx_fuzz_regression_test test/openavx_fuzz_regression_test.c src/avx_speedhq.c)
+    add_openavx_test(openavx_fuzz_regression_test test/openavx_fuzz_regression_test.c)
     target_compile_definitions(openavx_fuzz_regression_test PRIVATE OPENAVX_PROJECT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
     # 8. Socket Resilience, Signal Safety & Concurrency Audit Proof Suite

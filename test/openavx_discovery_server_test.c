@@ -51,8 +51,7 @@ int main(void) {
     printf("    [+] Sender registered automatically with Discovery Server!\n");
 
     /* Give server time to record registration */
-    struct timespec ts = { .tv_sec = 0, .tv_nsec = 50000000L };
-    nanosleep(&ts, NULL);
+    avx_sleep_ms(50);
 
     /* 4. Create Finder configured with corporate group */
     printf("[*] 4. Creating Finder targeting Discovery Server...\n");
@@ -95,7 +94,7 @@ int main(void) {
     oavx_stream_close(p_recv);
     oavx_stream_close(p_send);
 
-    nanosleep(&ts, NULL);
+    avx_sleep_ms(50);
 
     /* Direct client query to verify server purged the source */
     char names[16][256];

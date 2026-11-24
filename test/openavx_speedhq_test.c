@@ -17,7 +17,9 @@
 #include <assert.h>
 #include <time.h>
 #include <math.h>
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -121,6 +123,9 @@ static struct {
 } s_ffshq = {0};
 
 static bool test_ffmpeg_shq_available(void) {
+#ifdef _WIN32
+    return false;
+#else
     if (s_ffshq.ready) return true;
 
     static const char *s_codec_libs[] = {"libavcodec.so.62",
@@ -181,6 +186,7 @@ static bool test_ffmpeg_shq_available(void) {
 
     s_ffshq.ready = true;
     return true;
+#endif
 }
 
 /*
@@ -327,6 +333,7 @@ static int test_ffmpeg_decode_shq(int width, int height, const uint8_t *shq, siz
 }
 
 static void test_ffmpeg_destroy(void) {
+#ifndef _WIN32
     if (s_ffshq.h_codec) {
         dlclose(s_ffshq.h_codec);
         s_ffshq.h_codec = NULL;
@@ -335,13 +342,12 @@ static void test_ffmpeg_destroy(void) {
         dlclose(s_ffshq.h_util);
         s_ffshq.h_util = NULL;
     }
+#endif
     s_ffshq.ready = false;
 }
 
 static double get_time_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+    return (double)avx_time_ns() / 1000000.0;
 }
 
 static void generate_test_uyvy(int width, int height, uint8_t *buf) {

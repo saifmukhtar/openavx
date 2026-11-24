@@ -9,11 +9,11 @@
 #define _DEFAULT_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #include "openavx.h"
+#include "avx_platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <unistd.h>
 
 int main(void) {
     printf("=== OpenAVX End-to-End RUDP Stream Tests ===\n\n");
@@ -56,7 +56,7 @@ int main(void) {
     printf("  [+] Receive stream active (RUDP session negotiated)\n");
 
     /* Allow network session handshake and port negotiation */
-    usleep(80000);
+    avx_sleep_ms(80);
 
     /* 4. Stream 20 Video Frames over RUDP */
     printf("[*] 4. Transmitting Video Frames over RUDP...\n");
@@ -151,7 +151,7 @@ int main(void) {
     bool tally_ok = oavx_stream_set_tally(rx, &tally_set);
     assert(tally_ok);
 
-    usleep(50000);
+    avx_sleep_ms(50);
     oavx_tally_t tally_get = {0};
     bool get_ok = oavx_stream_get_tally(tx, &tally_get, 200);
     assert(get_ok);

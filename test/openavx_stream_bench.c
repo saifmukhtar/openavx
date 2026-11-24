@@ -16,10 +16,13 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#if !defined(_WIN32)
 #include <pthread.h>
 #include <sys/resource.h>
+#endif
 
 #include "openavx.h"
+#include "avx_platform.h"
 #include "avx_speedhq.h"
 
 #define BENCH_RING_1080P 16
@@ -63,11 +66,24 @@ static int64_t mono_ns(void) {
 }
 
 static double proc_cpu_sec(void) {
+#if defined(_WIN32)
+    FILETIME create_time, exit_time, kernel_time, user_time;
+    if (GetProcessTimes(GetCurrentProcess(), &create_time, &exit_time, &kernel_time, &user_time)) {
+        ULARGE_INTEGER k, u;
+        k.LowPart = kernel_time.dwLowDateTime;
+        k.HighPart = kernel_time.dwHighDateTime;
+        u.LowPart = user_time.dwLowDateTime;
+        u.HighPart = user_time.dwHighDateTime;
+        return (double)(k.QuadPart + u.QuadPart) * 1e-7;
+    }
+    return 0.0;
+#else
     struct rusage ru;
     if (getrusage(RUSAGE_SELF, &ru) != 0) return 0.0;
     double u = (double)ru.ru_utime.tv_sec + (double)ru.ru_utime.tv_usec * 1e-6;
     double s = (double)ru.ru_stime.tv_sec + (double)ru.ru_stime.tv_usec * 1e-6;
     return u + s;
+#endif
 }
 
 static void sleep_until_ns(int64_t target_ns) {
@@ -309,7 +325,7 @@ static void run_stream_scenario(const char *label,
 
     oavx_stream_t *rxs[BENCH_MAX_CLIENTS] = {0};
     rx_worker_t    workers[BENCH_MAX_CLIENTS] = {0};
-    pthread_t      threads[BENCH_MAX_CLIENTS] = {0};
+    avx_thread_t   threads[BENCH_MAX_CLIENTS] = {0};
 
     int64_t bench_start = mono_ns();
     for (int c = 0; c < num_clients; ++c) {
@@ -334,7 +350,7 @@ static void run_stream_scenario(const char *label,
     }
 
     for (int c = 0; c < num_clients; ++c) {
-        if (rxs[c]) pthread_create(&threads[c], NULL, rx_worker_main, &workers[c]);
+        if (rxs[c]) avx_thread_create(&threads[c], rx_worker_main, &workers[c]);
     }
 
     /* Wait for all clients to finish TCP handshake (including SYN retry on lossy WAN) */
@@ -413,7 +429,7 @@ static void run_stream_scenario(const char *label,
 
     for (int c = 0; c < num_clients; ++c) workers[c].stop = true;
     for (int c = 0; c < num_clients; ++c) {
-        if (rxs[c]) pthread_join(threads[c], NULL);
+        if (rxs[c]) avx_thread_join(threads[c]);
     }
 
     int64_t active_end_ns = t_end - (int64_t)tail_ns;

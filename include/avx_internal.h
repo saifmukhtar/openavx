@@ -519,8 +519,8 @@ extern avx_global_state_t g_avx_state;
 
 /* Internal Helper Functions */
 avx_socket_t avx_socket_create_tcp_server(uint16_t port);
-avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t port);
-avx_socket_t avx_socket_connect_tcp(const char* host, uint16_t port);
+OPENAVX_API avx_socket_t avx_socket_create_tcp_server_bind(const char* bind_ip, uint16_t port);
+OPENAVX_API avx_socket_t avx_socket_connect_tcp(const char* host, uint16_t port);
 avx_socket_t avx_socket_connect_tcp_timeout(const char* host, uint16_t port, uint32_t timeout_ms);
 avx_socket_t avx_socket_start_nonblocking_connect(const char* host, uint16_t port, bool* connected_now);
 avx_socket_t avx_socket_create_mdns_multicast(void);
@@ -539,7 +539,7 @@ void avx_pcap_close(void);
 
 /* Sender Listener Thread */
 bool avx_send_start_listener(avx_send_ctx_t* send);
-void avx_send_stop_listener(avx_send_ctx_t* send);
+OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send);
 
 /* Telemetry & Kernel Socket Diagnostics */
 OPENAVX_API bool avx_rx_get_telemetry(avx_rx_instance_t p_instance, oavx_telemetry_t *out);
