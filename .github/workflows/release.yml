@@ -47,7 +47,7 @@ jobs:
           rm -rf dist/_CPack_Packages
 
       - name: Upload Package Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-native-packages
           path: dist/*
@@ -90,7 +90,7 @@ jobs:
           rm -rf dist/_CPack_Packages
 
       - name: Upload musl Package Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: alpine-musl-package
           path: dist/*
@@ -128,7 +128,7 @@ jobs:
           rm -rf dist/_CPack_Packages
 
       - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-packages
           path: dist/*
@@ -160,7 +160,7 @@ jobs:
           if (Test-Path dist/_CPack_Packages) { Remove-Item -Recurse -Force dist/_CPack_Packages }
 
       - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-packages
           path: dist/*
