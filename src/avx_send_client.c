@@ -544,8 +544,7 @@ void* avx_send_client_rx_worker(void* arg) {
                                 } else if (force_lan) {
                                     is_wan = false;
                                 } else {
-                                    is_wan = (slot->clients[c_idx].transport == OAVX_TRANSPORT_RUDP) ||
-                                             !avx_is_lan_sockaddr(&slot->clients[c_idx].addr);
+                                    is_wan = !avx_is_lan_sockaddr(&slot->clients[c_idx].addr);
                                 }
 
                                 if (is_wan && !slot->clients[c_idx].is_wan_registered) {
@@ -737,7 +736,7 @@ void* avx_send_listen_worker(void* arg) {
             slot->tcp_client_fd = client_fd;
         }
 
-        bool is_wan = !avx_is_lan_sockaddr(&client_addr) || (slot->transport == OAVX_TRANSPORT_RUDP);
+        bool is_wan = !avx_is_lan_sockaddr(&client_addr);
         slot->clients[assigned_slot].is_wan_client = is_wan;
         slot->clients[assigned_slot].is_wan_registered = is_wan;
         slot->clients[assigned_slot].negotiated_codec_fourcc = OAVX_FOURCC_VIDEO_TYPE_H264;
@@ -908,6 +907,11 @@ OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send_ctx) {
     }
     send_ctx->active_clients = 0;
     send_ctx->tcp_client_fd = AVX_INVALID_SOCKET;
+    if (send_ctx->tcp_listen_fd != AVX_INVALID_SOCKET) {
+        shutdown(send_ctx->tcp_listen_fd, AVX_SHUT_RDWR);
+        avx_socket_close(send_ctx->tcp_listen_fd);
+        send_ctx->tcp_listen_fd = AVX_INVALID_SOCKET;
+    }
     avx_mutex_unlock(&send_ctx->lock);
 
     /* Join all active client tx worker threads */
@@ -934,12 +938,4 @@ OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send_ctx) {
         send_ctx->nack_thread_active = false;
         send_ctx->nack_thread = 0;
     }
-
-    avx_mutex_lock(&send_ctx->lock);
-    if (send_ctx->tcp_listen_fd != AVX_INVALID_SOCKET) {
-        shutdown(send_ctx->tcp_listen_fd, AVX_SHUT_RDWR);
-        avx_socket_close(send_ctx->tcp_listen_fd);
-        send_ctx->tcp_listen_fd = AVX_INVALID_SOCKET;
-    }
-    avx_mutex_unlock(&send_ctx->lock);
 }

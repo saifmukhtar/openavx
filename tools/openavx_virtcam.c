@@ -13,7 +13,6 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <getopt.h>
 
 #include "avx_platform.h"
 #include "openavx.h"

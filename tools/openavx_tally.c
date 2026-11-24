@@ -20,7 +20,6 @@
 #include <signal.h>
 #include <time.h>
 #include <errno.h>
-#include <getopt.h>
 
 #include "avx_platform.h"
 #include "openavx.h"

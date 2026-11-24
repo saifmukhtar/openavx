@@ -682,6 +682,10 @@ static inline int getopt_long(int argc, char *const argv[], const char *optstrin
     }
     return (int)opt;
 }
+
+static inline int getopt(int argc, char *const argv[], const char *optstring) {
+    return getopt_long(argc, argv, optstring, NULL, NULL);
+}
 #else
 #include <getopt.h>
 #endif

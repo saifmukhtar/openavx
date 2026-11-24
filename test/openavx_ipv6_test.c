@@ -472,21 +472,33 @@ static void test_multicast_membership(void) {
     assert(ok);
     printf("  [+] Left IPv4 Multicast Group 239.255.0.1\n");
 
-    /* Test IPv6 Multicast Join / Leave */
-    ok = avx_udp_join_multicast(sock, "ff02::1", NULL);
+    /* Test IPv6 Multicast Join / Leave (BSD/macOS requires AF_INET6 socket for IPv6 multicast) */
+    avx_socket_t sock_v6 = sock;
+#if defined(AVX_OS_MACOS) || defined(AVX_OS_BSD)
+    sock_v6 = avx_udp_create_socket_bind("::", 0, true);
+    assert(sock_v6 != AVX_INVALID_SOCKET);
+#endif
+
+    ok = avx_udp_join_multicast(sock_v6, "ff02::1", NULL);
     assert(ok);
     printf("  [+] Joined IPv6 Multicast Group ff02::1 (MLDv2)\n");
 
-    ok = avx_udp_leave_multicast(sock, "ff02::1", NULL);
+    ok = avx_udp_leave_multicast(sock_v6, "ff02::1", NULL);
     assert(ok);
     printf("  [+] Left IPv6 Multicast Group ff02::1\n");
 
     /* Test bracketed IPv6 multicast address */
-    ok = avx_udp_join_multicast(sock, "[ff02::1]", NULL);
+    ok = avx_udp_join_multicast(sock_v6, "[ff02::1]", NULL);
     assert(ok);
-    ok = avx_udp_leave_multicast(sock, "[ff02::1]", NULL);
+    ok = avx_udp_leave_multicast(sock_v6, "[ff02::1]", NULL);
     assert(ok);
     printf("  [+] Joined and left bracketed IPv6 Multicast '[ff02::1]'\n");
+
+#if defined(AVX_OS_MACOS) || defined(AVX_OS_BSD)
+    if (sock_v6 != sock) {
+        avx_socket_close(sock_v6);
+    }
+#endif
 
     /* Test invalid multicast addresses */
     assert(!avx_udp_join_multicast(sock, "192.168.1.1", NULL));

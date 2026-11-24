@@ -522,7 +522,8 @@ static bool avx_recv_finish_tcp_handshake_locked(avx_recv_ctx_t* slot, avx_socke
         if (c_len > 0 && codecs_str[c_len - 1] == ',') codecs_str[c_len - 1] = '\0';
         if (codecs_str[0] == '\0') snprintf(codecs_str, sizeof(codecs_str), "h264");
 
-        const char *prof = (slot->transport == OAVX_TRANSPORT_RUDP) ? "wan" : "auto";
+        const char *prof = (slot->bandwidth == OAVX_BANDWIDTH_HIGHEST) ? "lan" :
+                           ((slot->bandwidth == OAVX_BANDWIDTH_LOWEST) ? "wan" : "auto");
         char resp[256];
         int rlen = snprintf(resp, sizeof(resp),
             "<transport mode=\"%s\" port=\"%u\" codecs=\"%s\" profile=\"%s\"/>\n",
