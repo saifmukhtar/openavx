@@ -348,7 +348,10 @@ if(BUILD_TESTING)
     add_openavx_test(openavx_v4l2_sink_test test/openavx_v4l2_sink_test.c)
     add_openavx_test(openavx_pipewire_sink_test test/openavx_pipewire_sink_test.c)
     add_openavx_test(openavx_virtcam_ipc_test test/openavx_virtcam_ipc_test.c)
-    add_openavx_test(openavx_dal_test test/openavx_dal_test.c src/avx_dal_plugin.c)
+    if(APPLE)
+        add_openavx_test(openavx_dal_test test/openavx_dal_test.c src/avx_dal_plugin.c)
+        set_tests_properties(openavx_dal_test PROPERTIES RUN_SERIAL TRUE)
+    endif()
     if(WIN32 OR MINGW)
         add_library(openavx_dshow_filter SHARED
             src/avx_dshow_filter.c
@@ -416,7 +419,6 @@ if(BUILD_TESTING)
         openavx_relay_test
         openavx_crypto_test
         openavx_virtcam_ipc_test
-        openavx_dal_test
         PROPERTIES RUN_SERIAL TRUE
     )
 endif()

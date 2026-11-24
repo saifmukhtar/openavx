@@ -11,7 +11,10 @@
 
 #if defined(_WIN32) || defined(_MSC_VER)
 
-#include "avx_platform.h"
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #include <io.h>
 #include <process.h>
 #include <direct.h>
@@ -41,10 +44,10 @@
 #endif
 
 #ifndef usleep
-#define usleep(us) avx_sleep_ms((DWORD)((us) / 1000))
+#define usleep(us) Sleep((DWORD)(((us) + 999) / 1000))
 #endif
 #ifndef sleep
-#define sleep(sec) avx_sleep_ms((DWORD)((sec) * 1000))
+#define sleep(sec) Sleep((DWORD)((sec) * 1000))
 #endif
 
 #ifndef isatty

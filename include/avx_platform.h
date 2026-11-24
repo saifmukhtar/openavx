@@ -92,6 +92,7 @@ extern "C" {
 #include <mstcpip.h>
 #include <windows.h>
 #include <io.h>
+#include "compat/win32/unistd.h"
 
 typedef SOCKET avx_socket_t;
 typedef int avx_socklen_t;

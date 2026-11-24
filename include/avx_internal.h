@@ -692,8 +692,8 @@ uint32_t avx_tx_get_video_compression(avx_tx_instance_t p_instance);
 void avx_setup_raw_video_planes(oavx_video_frame_t *vf, uint8_t *payload, size_t payload_len);
 
 /* mDNS Broadcast */
-int avx_mdns_broadcast_source(const char* name, uint16_t port);
-int avx_mdns_broadcast_source_ex(const char* name, uint16_t port, const char* bind_ip);
+OPENAVX_API int avx_mdns_broadcast_source(const char* name, uint16_t port);
+OPENAVX_API int avx_mdns_broadcast_source_ex(const char* name, uint16_t port, const char* bind_ip);
 
 /* Native RFC 2326 RTSP 1.0 Server */
 bool avx_tx_enable_rtsp_server(avx_tx_instance_t instance, uint16_t port, const char *path);

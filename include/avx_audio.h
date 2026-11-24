@@ -66,7 +66,7 @@ typedef struct avx_resampler_t avx_resampler_t;
  * Downmix 5.1 Surround to Stereo (ITU-R BS.775 / ATSC A/52 standard).
  * in_channels: array of 6 float pointers [FL, FR, C, LFE, BL, BR].
  */
-void avx_audio_downmix_5_1_to_stereo(
+OPENAVX_API void avx_audio_downmix_5_1_to_stereo(
     const float* const in_channels[6],
     float* out_left,
     float* out_right,
@@ -78,7 +78,7 @@ void avx_audio_downmix_5_1_to_stereo(
  * Downmix 7.1 Surround to Stereo.
  * in_channels: array of 8 float pointers [FL, FR, C, LFE, BL, BR, SL, SR].
  */
-void avx_audio_downmix_7_1_to_stereo(
+OPENAVX_API void avx_audio_downmix_7_1_to_stereo(
     const float* const in_channels[8],
     float* out_left,
     float* out_right,
@@ -90,7 +90,7 @@ void avx_audio_downmix_7_1_to_stereo(
  * Downmix Quadraphonic 4.0 to Stereo.
  * in_channels: array of 4 float pointers [FL, FR, BL, BR].
  */
-void avx_audio_downmix_quad_to_stereo(
+OPENAVX_API void avx_audio_downmix_quad_to_stereo(
     const float* const in_channels[4],
     float* out_left,
     float* out_right,
@@ -101,7 +101,7 @@ void avx_audio_downmix_quad_to_stereo(
 /**
  * Downmix Stereo to Mono.
  */
-void avx_audio_downmix_stereo_to_mono(
+OPENAVX_API void avx_audio_downmix_stereo_to_mono(
     const float* in_left,
     const float* in_right,
     float* out_mono,
@@ -113,7 +113,7 @@ void avx_audio_downmix_stereo_to_mono(
  * Arbitrary M x N channel matrix remixing.
  * matrix is out_channel_count x in_channel_count row-major float matrix.
  */
-void avx_audio_matrix_mix(
+OPENAVX_API void avx_audio_matrix_mix(
     const float* const* in_channels,
     int in_channel_count,
     float* const* out_channels,
@@ -128,7 +128,7 @@ void avx_audio_matrix_mix(
  * If src_frame has > 2 channels, downmixes to stereo in dst_frame.
  * Allocates dst_frame->planes[0]; must be freed with avx_audio_frame_free_data().
  */
-bool avx_audio_frame_downmix_to_stereo(
+OPENAVX_API bool avx_audio_frame_downmix_to_stereo(
     const oavx_audio_frame_t* src_frame,
     oavx_audio_frame_t* dst_frame,
     avx_audio_normalize_e normalize_mode
@@ -137,7 +137,7 @@ bool avx_audio_frame_downmix_to_stereo(
 /**
  * Frees memory allocated by avx_audio_frame_downmix_to_stereo or avx_audio_frame_resample.
  */
-void avx_audio_frame_free_data(oavx_audio_frame_t* frame);
+OPENAVX_API void avx_audio_frame_free_data(oavx_audio_frame_t* frame);
 
 /* ========================================================================= */
 /* 2. BROADCAST SAMPLE RATE CONVERSION (RESAMPLING)                          */
@@ -147,7 +147,7 @@ void avx_audio_frame_free_data(oavx_audio_frame_t* frame);
  * Creates a stateful streaming audio resampler.
  * Uses exact rational phase fraction stepping based on gcd(in_rate, out_rate).
  */
-avx_resampler_t* avx_resampler_create(
+OPENAVX_API avx_resampler_t* avx_resampler_create(
     int in_rate,
     int out_rate,
     int channels,
@@ -160,7 +160,7 @@ avx_resampler_t* avx_resampler_create(
  * out_channels: array of channels planar float output buffers.
  * Returns the exact number of output samples generated in this call.
  */
-int avx_resampler_process(
+OPENAVX_API int avx_resampler_process(
     avx_resampler_t* resampler,
     const float* const* in_channels,
     int in_samples,
@@ -172,7 +172,7 @@ int avx_resampler_process(
  * Flushes any remaining samples buffered in the resampler at end of stream.
  * Returns the number of flushed samples generated.
  */
-int avx_resampler_flush(
+OPENAVX_API int avx_resampler_flush(
     avx_resampler_t* resampler,
     float* const* out_channels,
     int max_out_samples
@@ -181,19 +181,19 @@ int avx_resampler_flush(
 /**
  * Resets the resampler's internal FIFO buffers and phase accumulator.
  */
-void avx_resampler_reset(avx_resampler_t* resampler);
+OPENAVX_API void avx_resampler_reset(avx_resampler_t* resampler);
 
 /**
  * Destroys a resampler instance and frees all associated buffers.
  */
-void avx_resampler_destroy(avx_resampler_t* resampler);
+OPENAVX_API void avx_resampler_destroy(avx_resampler_t* resampler);
 
 /**
  * High-level OpenAVX audio frame resampling helper.
  * Resamples src_frame into dst_frame using the provided resampler instance.
  * Allocates dst_frame->planes[0]; must be freed with avx_audio_frame_free_data().
  */
-bool avx_audio_frame_resample(
+OPENAVX_API bool avx_audio_frame_resample(
     avx_resampler_t* resampler,
     const oavx_audio_frame_t* src_frame,
     oavx_audio_frame_t* dst_frame
@@ -203,7 +203,7 @@ bool avx_audio_frame_resample(
  * Simple one-shot resample for contiguous single-channel buffers.
  * Returns number of output samples written, or -1 on error.
  */
-int avx_audio_resample_simple(
+OPENAVX_API int avx_audio_resample_simple(
     const float* in_data,
     int in_samples,
     int in_rate,
@@ -230,17 +230,17 @@ typedef struct avx_audio_jitter_config_t {
 /**
  * Creates an adaptive audio jitter buffer instance.
  */
-avx_audio_jitter_t* avx_audio_jitter_create(const avx_audio_jitter_config_t* cfg);
+OPENAVX_API avx_audio_jitter_t* avx_audio_jitter_create(const avx_audio_jitter_config_t* cfg);
 
 /**
  * Destroys an adaptive audio jitter buffer instance and releases memory.
  */
-void avx_audio_jitter_destroy(avx_audio_jitter_t* jb);
+OPENAVX_API void avx_audio_jitter_destroy(avx_audio_jitter_t* jb);
 
 /**
  * Pushes incoming bursty/network audio chunk into the elastic planar ring buffer.
  */
-void avx_audio_jitter_push(avx_audio_jitter_t* jb, const float* const* channels, int num_samples);
+OPENAVX_API void avx_audio_jitter_push(avx_audio_jitter_t* jb, const float* const* channels, int num_samples);
 
 /**
  * Pulls steady, clock-steered audio samples for mixer/soundcard playback.
@@ -248,22 +248,22 @@ void avx_audio_jitter_push(avx_audio_jitter_t* jb, const float* const* channels,
  * and smooth cosine cross-fades on starvation.
  * Returns the actual number of samples generated.
  */
-int avx_audio_jitter_pull(avx_audio_jitter_t* jb, float* const* out_channels, int requested_samples);
+OPENAVX_API int avx_audio_jitter_pull(avx_audio_jitter_t* jb, float* const* out_channels, int requested_samples);
 
 /**
  * Returns current buffered audio depth in samples.
  */
-int avx_audio_jitter_get_depth_samples(const avx_audio_jitter_t* jb);
+OPENAVX_API int avx_audio_jitter_get_depth_samples(const avx_audio_jitter_t* jb);
 
 /**
  * Returns current buffered audio depth in milliseconds.
  */
-float avx_audio_jitter_get_depth_ms(const avx_audio_jitter_t* jb);
+OPENAVX_API float avx_audio_jitter_get_depth_ms(const avx_audio_jitter_t* jb);
 
 /**
  * Resets the jitter buffer, clearing buffered samples and re-arming pre-roll.
  */
-void avx_audio_jitter_reset(avx_audio_jitter_t* jb);
+OPENAVX_API void avx_audio_jitter_reset(avx_audio_jitter_t* jb);
 
 /* ========================================================================= */
 /* 4. AUDIO MATRIXING, ROUTING & UPMIXING TOOLS                              */
