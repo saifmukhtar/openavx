@@ -9,7 +9,9 @@
 #include "avx_send_internal.h"
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <strings.h>
+#endif
 #include <stdio.h>
 #include <time.h>
 

@@ -9,7 +9,9 @@
 #include "avx_send_internal.h"
 #include "avx_video_codec.h"
 #include <string.h>
+#ifndef _WIN32
 #include <strings.h>
+#endif
 #include <stdlib.h>
 #if defined(AVX_OS_POSIX)
 #include <sys/ioctl.h>

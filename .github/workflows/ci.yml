@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify SPDX License Headers
         run: |
@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure CMake (Strict C99)
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_EXTENSIONS=OFF -DBUILD_TESTING=ON
@@ -111,7 +111,7 @@ jobs:
         run: apk add --no-cache git build-base cmake linux-headers ffmpeg-dev
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_EXTENSIONS=OFF -DBUILD_TESTING=ON

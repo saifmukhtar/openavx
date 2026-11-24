@@ -242,7 +242,7 @@ static void scalar_downmix_quad(
 
 #if AUDIO_HAS_X86_SIMD
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_downmix_5_1(
     const float* const in[6],
     float* restrict out_l,
@@ -336,7 +336,7 @@ static void avx2_downmix_5_1(
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_downmix_5_1_ltrt(
     const float* const in[6],
     float* restrict out_l,
@@ -429,7 +429,7 @@ static void avx2_downmix_5_1_ltrt(
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_sinc_convolve_channels(
     float** fifo,
     int curr_offset,
@@ -466,7 +466,7 @@ static void avx2_sinc_convolve_channels(
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static inline void avx2_cubic_interpolate_stereo(
     float** fifo,
     int curr_idx,

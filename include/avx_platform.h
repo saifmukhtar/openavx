@@ -62,6 +62,13 @@ extern "C" {
 #define AVX_ARCH_NAME "Generic"
 #endif
 
+/* SIMD Function Target Attributes (Clang/GCC function multi-versioning, no-op on MSVC) */
+#if defined(__GNUC__) || defined(__clang__)
+#define AVX_TARGET_AVX2 __attribute__((target("avx2,fma")))
+#else
+#define AVX_TARGET_AVX2
+#endif
+
 /* Path separators */
 #if defined(AVX_OS_WINDOWS)
 #define AVX_PATH_SEP "\\"

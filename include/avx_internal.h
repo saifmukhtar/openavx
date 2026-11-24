@@ -17,7 +17,7 @@
 #include "avx_audio_codec.h"
 #include "avx_video_codec.h"
 
-#define OPENAVX_VERSION "openavx v0.2.0"
+#define OPENAVX_VERSION "openavx v0.2.1"
 #define AVX_MAX_SESSIONS 32
 #define AVX_DEFAULT_PORT 7960
 #define AVX_MDNS_PORT 5353
@@ -167,7 +167,7 @@ avx_router_instance_t avx_router_create(const avx_router_config_t* settings);
 void avx_router_destroy(avx_router_instance_t instance);
 bool avx_router_route(avx_router_instance_t instance, const oavx_endpoint_t* source);
 bool avx_router_clear(avx_router_instance_t instance);
-oavx_endpoint_t avx_router_get_source(avx_router_instance_t instance);
+OPENAVX_API oavx_endpoint_t avx_router_get_source(avx_router_instance_t instance);
 
 /* Frame Synchronizer (src/avx_framesync.c) */
 OPENAVX_API avx_sync_instance_t avx_sync_create(avx_rx_instance_t receiver);

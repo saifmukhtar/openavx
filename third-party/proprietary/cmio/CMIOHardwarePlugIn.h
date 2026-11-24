@@ -163,12 +163,14 @@ struct CMIOHardwarePlugInInterface {
     OSStatus (*Initialize)(CMIOHardwarePlugInRef self);
     OSStatus (*InitializeWithObjectID)(CMIOHardwarePlugInRef self, CMIOObjectID objectID);
     OSStatus (*Teardown)(CMIOHardwarePlugInRef self);
-    OSStatus (*ObjectShow)(CMIOHardwarePlugInRef self, CMIOObjectID objectID);
+    void     (*ObjectShow)(CMIOHardwarePlugInRef self, CMIOObjectID objectID);
     Boolean  (*ObjectHasProperty)(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address);
     OSStatus (*ObjectIsPropertySettable)(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, Boolean *isSettable);
     OSStatus (*ObjectGetPropertyDataSize)(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, UInt32 qualifierDataSize, const void *qualifierData, UInt32 *dataSize);
     OSStatus (*ObjectGetPropertyData)(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, UInt32 qualifierDataSize, const void *qualifierData, UInt32 dataSize, UInt32 *dataUsed, void *data);
     OSStatus (*ObjectSetPropertyData)(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, UInt32 qualifierDataSize, const void *qualifierData, UInt32 dataSize, const void *data);
+    OSStatus (*DeviceSuspend)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID);
+    OSStatus (*DeviceResume)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID);
     OSStatus (*DeviceStartStream)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
     OSStatus (*DeviceStopStream)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
     OSStatus (*DeviceProcessScheduledOutput)(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, const AudioTimeStamp *scheduledOutput);

@@ -117,16 +117,16 @@ Download pre-compiled binaries and native packages from [GitHub Releases](https:
 
 * **Debian / Ubuntu (`.deb`):**
   ```bash
-  sudo dpkg -i openavx-0.2.0-linux-x86_64.deb
+  sudo dpkg -i openavx-0.2.1-linux-x86_64.deb
   ```
 * **Fedora / RHEL / Rocky (`.rpm`):**
   ```bash
-  sudo rpm -Uvh openavx-0.2.0-linux-x86_64.rpm
+  sudo rpm -Uvh openavx-0.2.1-linux-x86_64.rpm
   ```
 * **Standalone Tarball (Linux glibc / Alpine musl / macOS):**
   ```bash
-  tar -xzf openavx-0.2.0-linux-x86_64.tar.gz
-  sudo cp -r openavx-0.2.0-linux-x86_64/* /usr/local/
+  tar -xzf openavx-0.2.1-linux-x86_64.tar.gz
+  sudo cp -r openavx-0.2.1-linux-x86_64/* /usr/local/
   ```
 * **Windows (`.zip`):** Extract and add `bin/` to your system `PATH`.
 

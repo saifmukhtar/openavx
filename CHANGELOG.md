@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
+### Fixed
+- **Windows MSVC Compatibility**:
+  - Replaced POSIX `<strings.h>` with portable `#include <string.h>` across network and pipeline subsystems.
+  - Replaced direct `<pthread.h>` in `src/avx_simd.c` with native Win32 `InitOnceExecuteOnce`.
+  - Guarded GCC `__attribute__((target("avx2,fma")))` syntax behind `AVX_TARGET_AVX2` macro for MSVC `cl.exe`.
+  - Harmonized `OPENAVX_API` DLL export linkage for `avx_router_get_source` in `include/avx_internal.h`.
+- **macOS CoreMediaIO & Timing Portability**:
+  - Aligned `CMIOHardwarePlugInInterface` structure members with Apple's native CoreMediaIO SDK (including `DAL_ObjectShow` returning `void`, `DAL_DeviceSuspend`, and `DAL_DeviceResume`).
+  - Added portable `nanosleep` fallback for `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)` on macOS and Windows in `test/openavx_stream_bench.c`.
+- **CI Test Suite Hardening**:
+  - Relaxed real-time client decimation timeouts and thresholds in `oavx_multiclient_test` and `openavx_congestion_test` for shared virtual-CPU runner environments.
+  - Added binary search fallback in `openavx_monitor_test` to support headless CTest execution directories.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

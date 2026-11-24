@@ -38,6 +38,19 @@ static int run_monitor_cmd(const char* args) {
             last_ret = ret;
         }
     }
+    const char* multi_candidates[] = {
+        "./bin/openavx",
+        "./openavx",
+        "./build/bin/openavx"
+    };
+    for (size_t i = 0; i < sizeof(multi_candidates)/sizeof(multi_candidates[0]); ++i) {
+        if (access(multi_candidates[i], X_OK) == 0) {
+            snprintf(cmd, sizeof(cmd), "ASAN_OPTIONS=detect_leaks=0 %s monitor %s > /dev/null 2>&1", multi_candidates[i], args);
+            int ret = system(cmd);
+            if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) return 0;
+            last_ret = ret;
+        }
+    }
     return last_ret;
 }
 
@@ -157,7 +170,7 @@ int main(void) {
     pthread_t th;
     s_sender_running = true;
     pthread_create(&th, NULL, sender_thread, p_send);
-    usleep(100000); /* 100ms for sender to start */
+    usleep(500000); /* 500ms for sender to start and bind socket */
 
     /* 3. Test TrueColor Half-Block Rendering with Audio Backend: Auto */
     printf("[*] 3. Testing TrueColor Monitor with Audio Backend (auto)...\n");

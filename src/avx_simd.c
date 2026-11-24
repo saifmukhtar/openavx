@@ -7,8 +7,12 @@
  */
 
 #include "avx_simd.h"
+#include "avx_platform.h"
 #include <string.h>
+
+#if !defined(AVX_OS_WINDOWS) || defined(__MINGW32__) || defined(__MINGW64__)
 #include <pthread.h>
+#endif
 
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
@@ -426,7 +430,7 @@ void avx_scalar_idct_8x8_put(const int16_t in[64], uint8_t *dest, int stride) {
 
 #if HAS_X86_SIMD
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
     const __m128i mask_y = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
     const __m128i mask_u = _mm_setr_epi8(0, 0, 4, 4, 8, 8, 12, 12, -1, -1, -1, -1, -1, -1, -1, -1);
@@ -470,7 +474,7 @@ static void avx2_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
     const __m128i mask_y = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
     const __m128i mask_u = _mm_setr_epi8(0, 0, 4, 4, 8, 8, 12, 12, -1, -1, -1, -1, -1, -1, -1, -1);
@@ -534,7 +538,7 @@ static void avx2_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num
  * This achieves 913+ FPS (10.59 GB/s throughput) with 100% bitwise parity against
  * the BT.601 scalar reference.
  */
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
     size_t num_pairs = num_pixels / 2;
     const uint8_t *__restrict s = src;
@@ -575,7 +579,7 @@ static void avx2_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
  *
  * Uses compiler-guided 256-bit AVX2 vectorization (see architectural note above).
  */
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
     size_t num_pairs = num_pixels / 2;
     const uint8_t *__restrict s = src;
@@ -611,7 +615,7 @@ static void avx2_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_rgba_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
     const __m256i mask = _mm256_setr_epi8(
         2, 1, 0, 3,  6, 5, 4, 7,  10, 9, 8, 11,  14, 13, 12, 15,
@@ -625,7 +629,7 @@ static void avx2_rgba_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_alpha_blend_rgba_block(const uint8_t *fg, const uint8_t *bg, uint8_t *out, size_t num_pixels) {
     const __m256i alpha_broadcast_mask = _mm256_setr_epi8(
         6, 7, 6, 7, 6, 7, 6, 7,  14, 15, 14, 15, 14, 15, 14, 15,
@@ -698,7 +702,7 @@ static void avx2_alpha_blend_rgba_block(const uint8_t *fg, const uint8_t *bg, ui
     }
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static inline void transpose8x8_32(__m256i *r0, __m256i *r1, __m256i *r2, __m256i *r3,
                                   __m256i *r4, __m256i *r5, __m256i *r6, __m256i *r7) {
     __m256i t0 = _mm256_unpacklo_epi32(*r0, *r1);
@@ -729,7 +733,7 @@ static inline void transpose8x8_32(__m256i *r0, __m256i *r1, __m256i *r2, __m256
     *r7 = _mm256_permute2f128_si256(u3, u7, 0x31);
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_fdct_8x8_impl(const int16_t in[64], int16_t out[64]) {
     /* Step 1: Load 8 rows and sign-extend to 32-bit */
     __m256i r0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i*)&in[0 * 8]));
@@ -852,7 +856,7 @@ static void avx2_fdct_8x8_impl(const int16_t in[64], int16_t out[64]) {
     #undef PACK_STORE_FDCT
 }
 
-__attribute__((target("avx2,fma")))
+AVX_TARGET_AVX2
 static void avx2_idct_8x8_put_impl(const int16_t in[64], uint8_t *dest, int stride) {
     __m256i x0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i*)&in[0 * 8]));
     __m256i x1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i*)&in[1 * 8]));
@@ -1436,7 +1440,11 @@ static void neon_idct_8x8_put_impl(const int16_t in[64], uint8_t *dest, int stri
 /* 4. DYNAMIC CPU DETECTION & DISPATCH LOGIC                                 */
 /* ========================================================================= */
 
+#if !defined(AVX_OS_WINDOWS) || defined(__MINGW32__) || defined(__MINGW64__)
 static pthread_once_t g_simd_once = PTHREAD_ONCE_INIT;
+#else
+static INIT_ONCE g_simd_once = INIT_ONCE_STATIC_INIT;
+#endif
 static avx_simd_type_e g_simd_type = AVX_SIMD_NONE;
 
 /*
@@ -1449,14 +1457,42 @@ static void detect_cpu_caps_init(void) {
     if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
         g_simd_type = AVX_SIMD_AVX2;
     }
+    #elif defined(_MSC_VER)
+    int cpuInfo[4] = {0};
+    __cpuid(cpuInfo, 0);
+    int nIds = cpuInfo[0];
+    if (nIds >= 7) {
+        int cpuInfo7[4] = {0};
+        __cpuidex(cpuInfo7, 7, 0);
+        bool has_avx2 = (cpuInfo7[1] & (1 << 5)) != 0;
+        int cpuInfo1[4] = {0};
+        __cpuid(cpuInfo1, 1);
+        bool has_fma = (cpuInfo1[2] & (1 << 12)) != 0;
+        bool has_osxsave = (cpuInfo1[2] & (1 << 27)) != 0;
+        if (has_avx2 && has_fma && has_osxsave) {
+            g_simd_type = AVX_SIMD_AVX2;
+        }
+    }
     #endif
 #elif HAS_ARM_NEON
     g_simd_type = AVX_SIMD_NEON;
 #endif
 }
 
+#if defined(AVX_OS_WINDOWS) && !defined(__MINGW32__) && !defined(__MINGW64__)
+static BOOL CALLBACK simd_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
+    (void)InitOnce; (void)Parameter; (void)Context;
+    detect_cpu_caps_init();
+    return TRUE;
+}
+#endif
+
 static inline void detect_cpu_caps(void) {
+#if !defined(AVX_OS_WINDOWS) || defined(__MINGW32__) || defined(__MINGW64__)
     pthread_once(&g_simd_once, detect_cpu_caps_init);
+#else
+    InitOnceExecuteOnce(&g_simd_once, simd_once_cb, NULL, NULL);
+#endif
 }
 
 avx_simd_type_e avx_simd_get_caps(void) {

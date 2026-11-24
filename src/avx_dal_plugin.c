@@ -43,12 +43,14 @@ typedef struct OpenAVXDALPlugin {
 static OSStatus DAL_Initialize(CMIOHardwarePlugInRef self);
 static OSStatus DAL_InitializeWithObjectID(CMIOHardwarePlugInRef self, CMIOObjectID objectID);
 static OSStatus DAL_Teardown(CMIOHardwarePlugInRef self);
-static OSStatus DAL_ObjectShow(CMIOHardwarePlugInRef self, CMIOObjectID objectID);
+static void     DAL_ObjectShow(CMIOHardwarePlugInRef self, CMIOObjectID objectID);
 static Boolean  DAL_ObjectHasProperty(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address);
 static OSStatus DAL_ObjectIsPropertySettable(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, Boolean *isSettable);
 static OSStatus DAL_ObjectGetPropertyDataSize(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, UInt32 qualifierDataSize, const void *qualifierData, UInt32 *dataSize);
 static OSStatus DAL_ObjectGetPropertyData(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, UInt32 qualifierDataSize, const void *qualifierData, UInt32 dataSize, UInt32 *dataUsed, void *data);
 static OSStatus DAL_ObjectSetPropertyData(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address, UInt32 qualifierDataSize, const void *qualifierData, UInt32 dataSize, const void *data);
+static OSStatus DAL_DeviceSuspend(CMIOHardwarePlugInRef self, CMIODeviceID deviceID);
+static OSStatus DAL_DeviceResume(CMIOHardwarePlugInRef self, CMIODeviceID deviceID);
 static OSStatus DAL_DeviceStartStream(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
 static OSStatus DAL_DeviceStopStream(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
 static OSStatus DAL_DeviceProcessScheduledOutput(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, const AudioTimeStamp *scheduledOutput);
@@ -71,6 +73,8 @@ static CMIOHardwarePlugInInterface g_DALInterface = {
     DAL_ObjectGetPropertyDataSize,
     DAL_ObjectGetPropertyData,
     DAL_ObjectSetPropertyData,
+    DAL_DeviceSuspend,
+    DAL_DeviceResume,
     DAL_DeviceStartStream,
     DAL_DeviceStopStream,
     DAL_DeviceProcessScheduledOutput
@@ -114,12 +118,18 @@ static void *DAL_WorkerThread(void *arg)
 /* IUNKNOWN IMPLEMENTATION                                                   */
 /* ========================================================================= */
 
+/* CMIO Hardware Plugin Interface UUID: 6D343053-93BF-11D8-8534-000A95881667 */
+static const CFUUIDBytes s_CMIOHardwarePlugInInterfaceUUID = {
+    0x6d, 0x34, 0x30, 0x53, 0x93, 0xbf, 0x11, 0xd8,
+    0x85, 0x34, 0x00, 0x0a, 0x95, 0x88, 0x16, 0x67
+};
+
 static HRESULT DAL_QueryInterface(void *thisPointer, CFUUIDBytes iid, LPVOID *ppv)
 {
     if (!ppv) return E_POINTER;
     *ppv = NULL;
 
-    if (memcmp(&iid, &kCMIOHardwarePlugInInterfaceUUID, sizeof(CFUUIDBytes)) == 0) {
+    if (memcmp(&iid, &s_CMIOHardwarePlugInInterfaceUUID, sizeof(CFUUIDBytes)) == 0) {
         *ppv = thisPointer;
         DAL_AddRef(thisPointer);
         return S_OK;
@@ -176,11 +186,10 @@ static OSStatus DAL_Teardown(CMIOHardwarePlugInRef self)
     return kCMIOHardwareNoError;
 }
 
-static OSStatus DAL_ObjectShow(CMIOHardwarePlugInRef self, CMIOObjectID objectID)
+static void DAL_ObjectShow(CMIOHardwarePlugInRef self, CMIOObjectID objectID)
 {
     (void)self;
     (void)objectID;
-    return kCMIOHardwareNoError;
 }
 
 static Boolean DAL_ObjectHasProperty(CMIOHardwarePlugInRef self, CMIOObjectID objectID, const CMIOObjectPropertyAddress *address)
@@ -383,6 +392,20 @@ static OSStatus DAL_ObjectSetPropertyData(CMIOHardwarePlugInRef self, CMIOObject
     (void)dataSize;
     (void)data;
     return kCMIOHardwareUnknownPropertyError;
+}
+
+static OSStatus DAL_DeviceSuspend(CMIOHardwarePlugInRef self, CMIODeviceID deviceID)
+{
+    (void)self;
+    (void)deviceID;
+    return kCMIOHardwareNoError;
+}
+
+static OSStatus DAL_DeviceResume(CMIOHardwarePlugInRef self, CMIODeviceID deviceID)
+{
+    (void)self;
+    (void)deviceID;
+    return kCMIOHardwareNoError;
 }
 
 /* Attaches shared memory consumer and starts background frame pump for CoreMediaIO. */

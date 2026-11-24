@@ -71,10 +71,21 @@ static double proc_cpu_sec(void) {
 }
 
 static void sleep_until_ns(int64_t target_ns) {
+#if defined(__APPLE__) || defined(_WIN32)
+    int64_t now = mono_ns();
+    if (target_ns > now) {
+        int64_t diff_ns = target_ns - now;
+        struct timespec ts;
+        ts.tv_sec = (time_t)(diff_ns / 1000000000LL);
+        ts.tv_nsec = (long)(diff_ns % 1000000000LL);
+        nanosleep(&ts, NULL);
+    }
+#else
     struct timespec ts;
     ts.tv_sec = (time_t)(target_ns / 1000000000LL);
     ts.tv_nsec = (long)(target_ns % 1000000000LL);
     while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL) == EINTR) {}
+#endif
 }
 
 static int cmp_double_asc(const void *a, const void *b) {
