@@ -69,7 +69,13 @@ bool avx_net_resolve_interface_or_ip(const char* iface_or_ip, char* out_ip, size
         if (!ifa->ifa_addr || (ifa->ifa_addr->sa_family != AF_INET && ifa->ifa_addr->sa_family != AF_INET6)) {
             continue;
         }
-        if (strcmp(ifa->ifa_name, iface_or_ip) == 0) {
+        bool match = (strcmp(ifa->ifa_name, iface_or_ip) == 0);
+#if defined(AVX_OS_MACOS) || defined(AVX_OS_BSD)
+        if (!match && strcmp(iface_or_ip, "lo") == 0 && strcmp(ifa->ifa_name, "lo0") == 0) {
+            match = true;
+        }
+#endif
+        if (match) {
             if (ifa->ifa_addr->sa_family == AF_INET) {
                 struct sockaddr_in *s4 = (struct sockaddr_in*)ifa->ifa_addr;
                 if (inet_ntop(AF_INET, &s4->sin_addr, out_ip, (socklen_t)out_len) != NULL) {

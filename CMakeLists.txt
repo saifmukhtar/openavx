@@ -64,7 +64,7 @@ find_package(Threads REQUIRED)
 set(SYSTEM_LIBS "")
 
 if(WIN32)
-    list(APPEND SYSTEM_LIBS ws2_32)
+    list(APPEND SYSTEM_LIBS ws2_32 mfuuid)
 elseif(UNIX)
     # Math library
     find_library(LIBM m)

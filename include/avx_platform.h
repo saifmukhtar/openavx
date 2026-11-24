@@ -121,8 +121,23 @@ typedef ULONG avx_nfds_t;
 #define MSG_NOSIGNAL 0
 #endif
 
-#if defined(_MSC_VER) && !defined(strtok_r)
+#if defined(_MSC_VER)
+#ifndef strtok_r
 #define strtok_r(s, d, p) strtok_s(s, d, p)
+#endif
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#ifndef strncasecmp
+#define strncasecmp _strnicmp
+#endif
+#include <intrin.h>
+#ifndef __sync_synchronize
+#define __sync_synchronize() MemoryBarrier()
+#endif
+#ifndef __sync_lock_test_and_set
+#define __sync_lock_test_and_set(ptr, val) _InterlockedExchange((volatile long*)(ptr), (long)(val))
+#endif
 #endif
 
 static inline int avx_gettimeofday(struct timeval *tv, void *tz) {
@@ -190,8 +205,23 @@ typedef nfds_t avx_nfds_t;
 #define MSG_NOSIGNAL 0
 #endif
 
-#if defined(_MSC_VER) && !defined(strtok_r)
+#if defined(_MSC_VER)
+#ifndef strtok_r
 #define strtok_r(s, d, p) strtok_s(s, d, p)
+#endif
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#ifndef strncasecmp
+#define strncasecmp _strnicmp
+#endif
+#include <intrin.h>
+#ifndef __sync_synchronize
+#define __sync_synchronize() MemoryBarrier()
+#endif
+#ifndef __sync_lock_test_and_set
+#define __sync_lock_test_and_set(ptr, val) _InterlockedExchange((volatile long*)(ptr), (long)(val))
+#endif
 #endif
 
 #endif

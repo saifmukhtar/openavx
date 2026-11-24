@@ -80,14 +80,27 @@ static inline socklen_t avx_udp_prepare_dest_addr(avx_socket_t sock, const void 
     }
 }
 
+static inline void avx_udp_tune_socket_buffers(avx_socket_t sock) {
+    int buf_sizes[] = { 16 * 1024 * 1024, 8 * 1024 * 1024, 4 * 1024 * 1024, 1024 * 1024, 256 * 1024 };
+    for (size_t i = 0; i < sizeof(buf_sizes)/sizeof(buf_sizes[0]); ++i) {
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_sizes[i], sizeof(buf_sizes[i])) == 0) {
+            break;
+        }
+    }
+    for (size_t i = 0; i < sizeof(buf_sizes)/sizeof(buf_sizes[0]); ++i) {
+        if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_sizes[i], sizeof(buf_sizes[i])) == 0) {
+            break;
+        }
+    }
+}
+
 /*
- * Creates dual-stack IPv4/IPv6 UDP socket with SO_REUSEADDR and 16MB socket
+ * Creates dual-stack IPv4/IPv6 UDP socket with SO_REUSEADDR and auto-tuned socket
  * buffer sizing (SO_RCVBUF/SO_SNDBUF) sized for gigabit media streaming.
  */
 avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool reuse)
 {
     int opt = 1;
-    int buf_size = 16 * 1024 * 1024; /* 16 MB socket buffers for high-bandwidth UDP streaming */
 
     /* Case A: Explicit IPv6 literal (e.g. "::1" or "[::1]" or "2001:...") */
     char unbracketed[128];
@@ -115,8 +128,7 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
             setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
 #endif
         }
-        setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
-        setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
+        avx_udp_tune_socket_buffers(sock);
 
         struct sockaddr_in6 addr6;
         memset(&addr6, 0, sizeof(addr6));
@@ -144,8 +156,7 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
                 setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
 #endif
             }
-            setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
-            setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
+            avx_udp_tune_socket_buffers(sock);
 
             struct sockaddr_in addr4;
             memset(&addr4, 0, sizeof(addr4));
@@ -161,33 +172,40 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
         }
     }
 
-    /* Case C: Wildcard Dual-Stack Binding (bind_ip is NULL, "", "0.0.0.0", or "::") */
-    avx_socket_t sock = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (sock != AVX_INVALID_SOCKET) {
-        int no = 0;
-        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&no, sizeof(no));
-        if (reuse) {
-            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
-#ifdef SO_REUSEPORT
-            setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
+    /* Case C: Wildcard Binding (bind_ip is NULL, "", "0.0.0.0", or "::") */
+    avx_socket_t sock = AVX_INVALID_SOCKET;
+#if !defined(AVX_OS_MACOS) && !defined(AVX_OS_BSD)
+    bool try_v6 = true;
+#else
+    bool try_v6 = (clean_ip && strcmp(clean_ip, "::") == 0);
 #endif
-        }
-        setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
-        setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
+    if (try_v6) {
+        sock = socket(AF_INET6, SOCK_DGRAM, 0);
+        if (sock != AVX_INVALID_SOCKET) {
+            int no = 0;
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&no, sizeof(no));
+            if (reuse) {
+                setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+                setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
+#endif
+            }
+            avx_udp_tune_socket_buffers(sock);
 
-        struct sockaddr_in6 addr6;
-        memset(&addr6, 0, sizeof(addr6));
-        addr6.sin6_family = AF_INET6;
-        addr6.sin6_port = htons(port);
-        addr6.sin6_addr = in6addr_any;
+            struct sockaddr_in6 addr6;
+            memset(&addr6, 0, sizeof(addr6));
+            addr6.sin6_family = AF_INET6;
+            addr6.sin6_port = htons(port);
+            addr6.sin6_addr = in6addr_any;
 
-        if (bind(sock, (struct sockaddr*)&addr6, sizeof(addr6)) == 0) {
-            return sock;
+            if (bind(sock, (struct sockaddr*)&addr6, sizeof(addr6)) == 0) {
+                return sock;
+            }
+            avx_socket_close(sock);
         }
-        avx_socket_close(sock);
     }
 
-    /* Fallback to AF_INET if dual-stack IPv6 is unsupported */
+    /* Fallback to AF_INET if dual-stack IPv6 is unsupported or on macOS/BSD IPv4 */
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
@@ -197,8 +215,7 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
         setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
 #endif
     }
-    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
-    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
+    avx_udp_tune_socket_buffers(sock);
 
     struct sockaddr_in addr4;
     memset(&addr4, 0, sizeof(addr4));

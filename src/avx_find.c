@@ -74,6 +74,15 @@ static avx_socket_t avx_mdns_open_listener_socket(void) {
     uint8_t loop = 1;
     setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (const char*)&loop, sizeof(loop));
 
+    /* Also join on loopback interface explicitly for local processes / test suites */
+    struct in_addr loop_addr;
+    loop_addr.s_addr = htonl(INADDR_LOOPBACK);
+    struct ip_mreq lo_mreq;
+    memset(&lo_mreq, 0, sizeof(lo_mreq));
+    inet_pton(AF_INET, AVX_MDNS_MCAST_ADDR, &lo_mreq.imr_multiaddr);
+    lo_mreq.imr_interface = loop_addr;
+    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&lo_mreq, sizeof(lo_mreq));
+
     return sock;
 }
 
@@ -462,6 +471,11 @@ int avx_mdns_broadcast_source_ex(const char* name, uint16_t port, const char* bi
     if (sock == AVX_INVALID_SOCKET) return -1;
     avx_socket_set_nosigpipe(sock);
 
+    uint8_t mcast_loop = 1;
+    setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (const char*)&mcast_loop, sizeof(mcast_loop));
+    uint8_t mcast_ttl = 255;
+    setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&mcast_ttl, sizeof(mcast_ttl));
+
     uint32_t src_ip_net = htonl(0x7F000001);
     if (bind_ip && bind_ip[0] != '\0' && strcmp(bind_ip, "0.0.0.0") != 0) {
         struct in_addr if_addr;
@@ -546,6 +560,13 @@ int avx_mdns_broadcast_source_ex(const char* name, uint16_t port, const char* bi
     idx += sizeof(s_target_host);
 
     ssize_t sent = sendto(sock, (const char*)pkt, (int)idx, 0, (struct sockaddr*)&mcast_addr, sizeof(mcast_addr));
+    if (sent <= 0) {
+        /* Fall back to loopback interface if no default multicast route exists (macOS/BSD/CI VMs) */
+        struct in_addr lo_if;
+        lo_if.s_addr = htonl(INADDR_LOOPBACK);
+        setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, (const char*)&lo_if, sizeof(lo_if));
+        sent = sendto(sock, (const char*)pkt, (int)idx, 0, (struct sockaddr*)&mcast_addr, sizeof(mcast_addr));
+    }
     avx_socket_close(sock);
 
     if (sent > 0) {

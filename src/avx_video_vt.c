@@ -59,15 +59,32 @@ static void vt_replace_buf(uint8_t **dst, size_t *dst_len, const uint8_t *src, s
     if (changed) *changed = true;
 }
 
+static bool vt_probe_av1_available(void) {
+    if (__builtin_available(macOS 13.0, *)) {
+        if (!VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)) return false;
+        CMVideoFormatDescriptionRef fmt = NULL;
+        OSStatus st = CMVideoFormatDescriptionCreate(kCFAllocatorDefault, kCMVideoCodecType_AV1, 128, 128, NULL, &fmt);
+        if (st != noErr || !fmt) return false;
+        VTDecompressionSessionRef sess = NULL;
+        VTDecompressionOutputCallbackRecord cb = {0};
+        st = VTDecompressionSessionCreate(kCFAllocatorDefault, fmt, NULL, NULL, &cb, &sess);
+        CFRelease(fmt);
+        if (st == noErr && sess) {
+            VTDecompressionSessionInvalidate(sess);
+            CFRelease(sess);
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool vt_dec_supports_fourcc(uint32_t src_fourcc) {
     if (src_fourcc == OAVX_FOURCC_VIDEO_TYPE_H264 || src_fourcc == 0x34363268 ||
         src_fourcc == OAVX_FOURCC_VIDEO_TYPE_HEVC || src_fourcc == 0x43564568) {
         return true;
     }
     if (src_fourcc == OAVX_FOURCC_VIDEO_TYPE_AV01) {
-        if (__builtin_available(macOS 13.0, *)) {
-            return VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1) != 0;
-        }
+        return vt_probe_av1_available();
     }
     return false;
 }
@@ -212,6 +229,16 @@ static int vt_ensure_session(avx_vt_dec_ctx_t *ctx, CMVideoFormatDescriptionRef 
         dst_attrs,
         &cb_rec,
         &ctx->session);
+    if (st != noErr && decoder_spec) {
+        /* Retry without hardware requirement if hardware decoder block is absent */
+        st = VTDecompressionSessionCreate(
+            kCFAllocatorDefault,
+            ctx->fmt_desc,
+            NULL,
+            dst_attrs,
+            &cb_rec,
+            &ctx->session);
+    }
 
     if (decoder_spec) CFRelease(decoder_spec);
     if (dst_attrs) CFRelease(dst_attrs);

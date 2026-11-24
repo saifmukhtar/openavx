@@ -53,7 +53,6 @@ static OSStatus DAL_DeviceSuspend(CMIOHardwarePlugInRef self, CMIODeviceID devic
 static OSStatus DAL_DeviceResume(CMIOHardwarePlugInRef self, CMIODeviceID deviceID);
 static OSStatus DAL_DeviceStartStream(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
 static OSStatus DAL_DeviceStopStream(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, CMIOStreamID streamID);
-static OSStatus DAL_DeviceProcessScheduledOutput(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, const AudioTimeStamp *scheduledOutput);
 
 static HRESULT DAL_QueryInterface(void *thisPointer, CFUUIDBytes iid, LPVOID *ppv);
 static ULONG   DAL_AddRef(void *thisPointer);
@@ -451,13 +450,7 @@ static OSStatus DAL_DeviceStopStream(CMIOHardwarePlugInRef self, CMIODeviceID de
     return kCMIOHardwareNoError;
 }
 
-static OSStatus DAL_DeviceProcessScheduledOutput(CMIOHardwarePlugInRef self, CMIODeviceID deviceID, const AudioTimeStamp *scheduledOutput)
-{
-    (void)self;
-    (void)deviceID;
-    (void)scheduledOutput;
-    return kCMIOHardwareNoError;
-}
+
 
 /* ========================================================================= */
 /* PLUGIN FACTORY ENTRY POINT                                                */
