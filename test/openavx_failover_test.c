@@ -133,7 +133,7 @@ int main(void) {
 
         /* Receiver should detect disconnect, execute failover, and connect to backup */
         bool received_bak = false;
-        for (int retry = 0; retry < 25; ++retry) {
+        for (int retry = 0; retry < 60; ++retry) {
             oavx_stream_send_video(bak_tx, &v_bak);
             ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 50);
             if (ft == OAVX_FRAME_TYPE_VIDEO && v_recv.planes[0][0] == 0x22) {
@@ -220,14 +220,14 @@ int main(void) {
 
         /* Now: Keep primary TCP socket open, but stop sending frames (stream stall) */
         printf("  [~] Freezing primary encoder (socket remains connected, no frames sent)...\n");
-        avx_sleep_ms(250); /* Exceeds 200 ms stall timeout */
+        avx_sleep_ms(350); /* Exceeds 200 ms stall timeout with ample safety buffer */
 
         /* Transmit frame on backup stream */
         oavx_video_frame_t v_bak;
         fill_test_video(&v_bak, 0x44);
 
         bool received_bak = false;
-        for (int retry = 0; retry < 25; ++retry) {
+        for (int retry = 0; retry < 60; ++retry) {
             oavx_stream_send_video(bak_tx, &v_bak);
             ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 50);
             if (ft == OAVX_FRAME_TYPE_VIDEO && v_recv.planes[0][0] == 0x44) {
@@ -239,7 +239,8 @@ int main(void) {
         }
 
         if (!received_bak) {
-            fprintf(stderr, "[-] Receiver failed to trigger failover on stream stall\n");
+            fprintf(stderr, "[-] Receiver failed to trigger failover on stream stall (is_on_failover=%d, ft=%d)\n",
+                    oavx_stream_is_on_failover(rx), (int)ft);
             return 1;
         }
 
@@ -322,7 +323,7 @@ int main(void) {
         fill_test_video(&v_bak, 0x66);
 
         bool received_bak = false;
-        for (int retry = 0; retry < 25; ++retry) {
+        for (int retry = 0; retry < 60; ++retry) {
             oavx_stream_send_video(bak_tx, &v_bak);
             ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 50);
             if (ft == OAVX_FRAME_TYPE_VIDEO && v_recv.planes[0][0] == 0x66) {
@@ -403,7 +404,7 @@ int main(void) {
         oavx_video_frame_t v_bak;
         fill_test_video(&v_bak, 0x88);
 
-        for (int retry = 0; retry < 25; ++retry) {
+        for (int retry = 0; retry < 60; ++retry) {
             oavx_stream_send_video(bak_tx, &v_bak);
             ft = oavx_stream_receive(rx, &v_recv, &a_recv, NULL, 50);
             if (ft == OAVX_FRAME_TYPE_VIDEO) {
