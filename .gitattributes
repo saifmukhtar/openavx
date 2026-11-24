@@ -1,0 +1,32 @@
+# Normalize text files across Linux, macOS, and Windows
+* text=auto eol=lf
+
+# C/C++ sources and headers
+*.c         text diff=cpp
+*.h         text diff=cpp
+*.cpp       text diff=cpp
+*.hpp       text diff=cpp
+*.map       text
+
+# Build, CI, docs, and packaging scripts
+CMakeLists.txt text
+Makefile       text
+Dockerfile     text
+*.cmake        text
+*.cmake.in     text
+*.pc.in        text
+*.md           text
+*.json         text
+*.yml          text
+*.yaml         text
+*.rb           text
+
+# Windows scripts preserve CRLF
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+*.ps1          text eol=crlf
+
+# Binary test/fuzz data
+fuzz/corpus/** binary
+*.pcap         binary
+*.png          binary

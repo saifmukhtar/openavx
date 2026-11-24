@@ -1,0 +1,10 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=@INCDIR@
+
+Name: libopenavx
+Description: Open Audio-Video eXchange Library
+Version: @VERSION@
+Libs: -L${libdir} -lopenavx -lpthread -lm -ldl
+Cflags: -I${includedir}

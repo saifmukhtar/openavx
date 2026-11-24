@@ -1,0 +1,260 @@
+name: Release & Multi-Platform Distribution
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. Linux Native Packages (.deb, .rpm, .tar.gz) via CMake + CTest + CPack
+  # ----------------------------------------------------------------------------
+  build-linux-packages:
+    name: Build & Test Linux Packages (DEB, RPM, TGZ)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Build & Packaging Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake rpm
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_EXTENSIONS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=ON
+
+      - name: Build Library, CLI & Tests
+        run: cmake --build build -j$(nproc)
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Generate Packages
+        run: |
+          mkdir -p dist
+          cpack --config build/CPackConfig.cmake -B dist
+          rm -rf dist/_CPack_Packages
+
+      - name: Upload Package Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-native-packages
+          path: dist/*
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------------------
+  # 2. Alpine Linux musl Package (.tar.gz) via CMake + CTest + CPack
+  # ----------------------------------------------------------------------------
+  build-alpine-musl-package:
+    name: Build & Test Alpine Linux musl Package
+    runs-on: ubuntu-22.04
+    container:
+      image: alpine:3.20
+    steps:
+      - name: Install Build & Packaging Tools
+        run: apk add --no-cache git build-base cmake linux-headers ffmpeg-dev
+
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_EXTENSIONS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=ON
+
+      - name: Build Library, CLI & Tests
+        run: cmake --build build -j$(nproc)
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Generate musl Tarball Package
+        run: |
+          mkdir -p dist
+          VERSION=$(grep 'PROJECT_VERSION:STATIC=' build/CMakeCache.txt | cut -d= -f2)
+          cpack --config build/CPackConfig.cmake -G "TGZ" -D CPACK_PACKAGE_FILE_NAME="openavx-${VERSION}-linux-x86_64-musl" -B dist
+          rm -rf dist/_CPack_Packages
+
+      - name: Upload musl Package Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-musl-package
+          path: dist/*
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------------------
+  # 3. macOS Universal 2 Package (arm64 + x86_64)
+  # ----------------------------------------------------------------------------
+  build-macos:
+    name: Build & Test macOS Universal 2 Package
+    runs-on: macos-15
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Configure Universal 2 Build
+        run: |
+          cmake -B build-macos -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_EXTENSIONS=OFF \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTING=ON
+
+      - name: Compile Universal Binaries & Tests
+        run: cmake --build build-macos -j$(sysctl -n hw.ncpu)
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build-macos --output-on-failure
+
+      - name: Package macOS Tarball
+        run: |
+          mkdir -p dist
+          cpack --config build-macos/CPackConfig.cmake -G "TGZ" -B dist
+          rm -rf dist/_CPack_Packages
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: dist/*
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------------------
+  # 4. Windows Native Package (x64 ZIP)
+  # ----------------------------------------------------------------------------
+  build-windows:
+    name: Build & Test Windows Package (x64)
+    runs-on: windows-2025
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build-win -S . -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_EXTENSIONS=OFF -DBUILD_TESTING=ON
+
+      - name: Build Solution & Tests
+        run: cmake --build build-win --config Release -j4
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build-win -C Release --output-on-failure
+
+      - name: Package Windows ZIP
+        run: |
+          mkdir dist
+          cpack --config build-win/CPackConfig.cmake -C Release -G "ZIP" -B dist
+          if (Test-Path dist/_CPack_Packages) { Remove-Item -Recurse -Force dist/_CPack_Packages }
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: dist/*
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------------------
+  # 5. Multi-Arch Docker Container Build & Push to GHCR
+  # ----------------------------------------------------------------------------
+  build-docker:
+    name: Build & Push Docker Container
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and Push Multi-Stage Alpine Container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: distribution/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ----------------------------------------------------------------------------
+  # 6. Publish GitHub Release with Cross-Platform Checksums
+  # ----------------------------------------------------------------------------
+  publish-release:
+    name: Publish Release & Universal Assets
+    needs: [build-linux-packages, build-alpine-musl-package, build-macos, build-windows, build-docker]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Download Linux Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-native-packages
+          path: release-assets/
+
+      - name: Download Alpine musl Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: alpine-musl-package
+          path: release-assets/
+
+      - name: Download macOS Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-packages
+          path: release-assets/
+
+      - name: Download Windows Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-packages
+          path: release-assets/
+
+      - name: Generate SHA-256 Checksums
+        working-directory: release-assets
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          name: OpenAVX ${{ github.ref_name }}

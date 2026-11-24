@@ -1,0 +1,22 @@
+{
+  "discovery": {
+    "servers": ["192.168.1.100:7959", "10.0.0.1:7959"],
+    "static_peers": ["10.0.0.10:7960", "10.0.0.11:7960"]
+  },
+  "channels": {
+    "publish": ["StudioA", "MainFeed"],
+    "subscribe": ["StudioA", "MainFeed"]
+  },
+  "network": {
+    "bind_ip": "127.0.0.1",
+    "nic_interface": "eth0",
+    "transport": "tcp",
+    "max_clients": 16,
+    "multicast": {
+      "enabled": false,
+      "ttl": 1,
+      "prefix": "239.255.0.0/16",
+      "netmask": "255.255.0.0"
+    }
+  }
+}

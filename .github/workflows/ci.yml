@@ -1,0 +1,126 @@
+name: CI (Multi-Platform Build & Verification)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # 1. Fast Repository & ABI Hygiene Checks
+  # ============================================================================
+  hygiene:
+    name: Hygiene (SPDX & Symbol Map)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify SPDX License Headers
+        run: |
+          missing=0
+          # Verify native files have AGPL-3.0-or-later WITH Classpath-exception-2.0
+          for f in include/*.h include/*.hpp src/*.c tools/*.c tools/*.h test/*.c test/*.cpp fuzz/*.c; do
+            if [ "$f" = "include/avx_speedhq.h" ] || [ "$f" = "src/avx_speedhq.c" ]; then
+              continue
+            fi
+            if ! grep -q "SPDX-License-Identifier: AGPL-3.0-or-later WITH Classpath-exception-2.0" "$f"; then
+              echo "Missing AGPL SPDX header: $f"
+              missing=1
+            fi
+          done
+          # Verify SpeedHQ has LGPL-2.1-or-later per upstream FFmpeg derivation
+          for f in include/avx_speedhq.h src/avx_speedhq.c; do
+            if ! grep -q "SPDX-License-Identifier: LGPL-2.1-or-later" "$f"; then
+              echo "Missing LGPL-2.1-or-later SPDX header: $f"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Verify Public OPENAVX_API Exports in openavx.map
+        run: |
+          python3 - << 'EOF'
+          import glob, pathlib, re, sys
+
+          map_txt = pathlib.Path("openavx.map").read_text()
+          map_syms = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*;", map_txt))
+
+          missing = []
+          for path in sorted(glob.glob("include/*.h")):
+              name = pathlib.Path(path).name
+              if name == "avx_internal.h":
+                  continue
+              txt = re.sub(r"/\*.*?\*/", " ", pathlib.Path(path).read_text(), flags=re.S)
+              txt = re.sub(r"\s+", " ", txt)
+              for m in re.finditer(r"OPENAVX_API\s+[^;()]+?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", txt):
+                  sym = m.group(1)
+                  if sym not in map_syms:
+                      missing.append((name, sym))
+
+          if missing:
+              for hdr, sym in missing:
+                  print(f"Missing in openavx.map: {sym} (declared in include/{hdr})")
+              sys.exit(1)
+          print("All public OPENAVX_API symbols present in openavx.map")
+          EOF
+
+  # ============================================================================
+  # 2. Multi-OS Strict C99 Build, CTest & Install Verification
+  # ============================================================================
+  cmake-matrix:
+    name: CMake C99 & CTest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15, windows-2025]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (Strict C99)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_EXTENSIONS=OFF -DBUILD_TESTING=ON
+
+      - name: Build Library, CLI & Tests
+        run: cmake --build build --config Release -j
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Verify Staging Install
+        run: cmake --install build --config Release --prefix "${{ github.workspace }}/install_test"
+
+  # ============================================================================
+  # 3. Alpine Linux (musl libc) Container Build & Verification
+  # ============================================================================
+  alpine-musl:
+    name: Alpine Linux (musl libc)
+    runs-on: ubuntu-22.04
+    container:
+      image: alpine:3.20
+
+    steps:
+      - name: Install Toolchain & Dependencies
+        run: apk add --no-cache git build-base cmake linux-headers ffmpeg-dev
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_EXTENSIONS=OFF -DBUILD_TESTING=ON
+
+      - name: Build Library, CLI & Tests
+        run: cmake --build build --config Release -j$(nproc)
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Verify Staging Install
+        run: cmake --install build --config Release --prefix "${{ github.workspace }}/install_test"

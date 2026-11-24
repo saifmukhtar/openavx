@@ -1,0 +1,99 @@
+name: Bug Report
+description: Report a bug, crash, build error, or stream/codec issue in OpenAVX
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and what you expected to happen.
+      placeholder: Expected vs actual behavior...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps / Command to Reproduce
+      description: Exact CLI command, config snippet, or minimal C/C++ reproducer.
+      placeholder: |
+        openavx pattern --res 1080p --fps 60
+        openavx gateway --web 8080
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install / Build Method
+      options:
+        - Source build (CMake)
+        - Linux package (.deb / .rpm)
+        - Docker container (Alpine musl)
+        - Homebrew
+        - Embedded C/C++ library (libopenavx)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os_arch
+    attributes:
+      label: OS & Architecture
+      options:
+        - Linux x86_64
+        - Linux ARM64 (aarch64)
+        - Linux ARM32 (armv7l / armhf)
+        - macOS Apple Silicon (arm64)
+        - macOS Intel (x86_64)
+        - Windows x64
+        - BSD / Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: libc
+    attributes:
+      label: C Library (Linux)
+      options:
+        - glibc (Ubuntu / Debian / Fedora / RHEL)
+        - musl (Alpine / Docker)
+        - N/A (macOS / Windows / BSD)
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: runtime_libs
+    attributes:
+      label: Optional Runtime Libraries Installed (dlopen)
+      description: Check any optional runtime codecs or audio drivers installed on this host (if known).
+      options:
+        - label: FFmpeg libavcodec (H.264 / HEVC / AV1 RTSP decoding)
+        - label: libopus (Opus audio compression; otherwise built-in ADPCM runs)
+        - label: PulseAudio / ALSA / PipeWire (CLI monitor audio playback)
+        - label: None / Built-in codecs only (SpeedHQ + ADPCM)
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - CLI tools (openavx / find / monitor / router / pattern / gateway / virtcam / server)
+        - Discovery (mDNS / discovery-server)
+        - Transport & Security (TCP / UDP / RUDP / FEC / E2EE / IPv6 / multi-NIC)
+        - Codecs / Color / SIMD (SpeedHQ / RTSP / Opus / ADPCM / NEON / AVX2)
+        - Config (openavx.json / schema)
+        - Build / Packaging (CMake / CPack / Docker)
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, `openavx --version`, or Backtrace (Optional)
+      description: Paste output from `openavx --version`, compiler/CTest logs, or drag & drop a `.log` file (remove private IPs or sensitive hostnames if needed).
+      render: text
+    validations:
+      required: false

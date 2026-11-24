@@ -1,0 +1,28 @@
+# Git / IDE / documentation
+.git
+.github
+.vscode
+*.md
+
+# Build and package artifacts
+build/
+build-*/
+build_*/
+bin/
+dist/
+AppDir/
+*.o
+*.so
+*.so.*
+*.a
+*.deb
+*.rpm
+*.tar.gz
+*.AppImage
+*.pcap
+
+# Local fuzzing outputs (keeps fuzz/*.c and tracked fuzz/corpus/* seed files)
+crash-*
+fuzz/crashes/
+fuzz/logs/
+fuzz/corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*

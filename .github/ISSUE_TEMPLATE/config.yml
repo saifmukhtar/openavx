@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Vulnerability Report
+    url: mailto:saifmukhtar20@gmail.com?subject=OpenAVX%20Security%20Report
+    about: Please email parser, memory-safety, or network security bugs privately instead of opening a public issue.

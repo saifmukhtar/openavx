@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/saifmukhtar/openavx/main/schema/v1.0.json",
+  "title": "OpenAVX Configuration Schema",
+  "description": "Production configuration schema for the Open Audio-Video eXchange (OpenAVX) media streaming architecture.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URL to the OpenAVX configuration JSON Schema."
+    },
+    "version": {
+      "type": "string",
+      "description": "Schema version string (e.g., '1.0').",
+      "default": "1.0"
+    },
+    "network": {
+      "type": "object",
+      "description": "Network adapter, interface binding, and peer coordination configuration.",
+      "properties": {
+        "bind_ip": {
+          "type": "string",
+          "description": "Explicit local IPv4/IPv6 address or interface to bind TCP and multicast egress (e.g., '10.0.0.50' or 'eth1')."
+        },
+        "bind_address": {
+          "type": "string",
+          "description": "Alias for bind_ip."
+        },
+        "interface": {
+          "type": "string",
+          "description": "Network interface adapter name (e.g., 'eth1', 'enp4s0')."
+        },
+        "discovery_servers": {
+          "description": "List or comma-separated string of discovery/registration server endpoints (host:port).",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "peers": {
+          "description": "List or comma-separated string of explicit unicast peer addresses or hostnames.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "description": "Stream publishing, subscription domains, and client limits.",
+      "properties": {
+        "groups": {
+          "description": "List or comma-separated string of announce groups/domains.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "publish": {
+          "description": "Broadcast channels/groups this endpoint announces to.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "subscribe": {
+          "description": "Channels/groups this endpoint discovers or subscribes to.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "max_clients": {
+          "type": "integer",
+          "description": "Maximum simultaneous client connections per sender stream.",
+          "default": 32
+        }
+      }
+    },
+    "transports": {
+      "type": "object",
+      "description": "Transport protocol and layer 3 multicast parameters.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "Transport mode ('tcp', 'rudp', or 'udp').",
+          "default": "tcp"
+        },
+        "multicast": {
+          "type": "object",
+          "description": "Layer 3 IP multicast transport parameters.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable IP multicast stream transmission.",
+              "default": false
+            },
+            "ttl": {
+              "type": "integer",
+              "description": "Multicast packet Time-To-Live (hop count).",
+              "minimum": 1,
+              "maximum": 255,
+              "default": 1
+            },
+            "prefix": {
+              "type": "string",
+              "description": "Multicast group address prefix or CIDR block (e.g., '239.255.0.0/16')."
+            },
+            "netmask": {
+              "type": "string",
+              "description": "Subnet netmask for multicast address allocation (e.g., '255.255.0.0')."
+            }
+          }
+        }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "description": "Discovery and registration endpoints (alias taxonomy).",
+      "properties": {
+        "servers": {
+          "description": "List or comma-separated string of discovery/registration server endpoints (host:port).",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "static_peers": {
+          "description": "List or comma-separated string of explicit unicast peer addresses or hostnames.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "description": "Publish/subscribe stream routing domains (alias taxonomy).",
+      "properties": {
+        "publish": {
+          "description": "List or comma-separated string of broadcast channels this endpoint announces to.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "subscribe": {
+          "description": "List or comma-separated string of channels this endpoint subscribes to.",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        }
+      }
+    },
+    "multicast": {
+      "type": "object",
+      "description": "Layer 3 IP multicast transport parameters (alias taxonomy).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable IP multicast stream transmission.",
+          "default": false
+        },
+        "ttl": {
+          "type": "integer",
+          "description": "Multicast packet Time-To-Live (hop count).",
+          "minimum": 1,
+          "maximum": 255,
+          "default": 1
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Multicast group address prefix or CIDR block (e.g., '239.255.0.0/16')."
+        },
+        "netmask": {
+          "type": "string",
+          "description": "Subnet netmask for multicast address allocation (e.g., '255.255.0.0')."
+        }
+      }
+    }
+  }
+}

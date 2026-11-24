@@ -1,0 +1,17 @@
+# GitHub Code Owners for OpenAVX
+# Automatically requests review on pull requests matching these paths.
+
+*                       @saifmukhtar
+
+# Core library, public ABI, and CLI suite
+/include/               @saifmukhtar
+/src/                   @saifmukhtar
+/tools/                 @saifmukhtar
+/openavx.map            @saifmukhtar
+/CMakeLists.txt         @saifmukhtar
+
+# CI, releases, packaging, and governance
+/.github/               @saifmukhtar
+/distribution/          @saifmukhtar
+/SECURITY.md            @saifmukhtar
+/CLA.md                 @saifmukhtar

@@ -1,0 +1,31 @@
+# ==============================================================================
+# OpenAVX (Open Audio-Video eXchange)
+# Docker Compose Deployment for Studio & Broadcast Infrastructure
+# ==============================================================================
+
+services:
+  # High-Performance Central OpenAVX Discovery Server
+  openavx-discovery-server:
+    image: openavx:latest
+    build:
+      context: ../..
+      dockerfile: distribution/docker/Dockerfile
+    container_name: openavx-discovery-server
+    restart: unless-stopped
+    # IMPORTANT: Discovery requires host networking for LAN UDP multicast (mDNS: 224.0.0.251:5353)
+    network_mode: host
+    command: ["--port", "7959"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Headless Test Pattern Stream Generator
+  # openavx-test-pattern:
+  #   image: openavx:latest
+  #   container_name: openavx-test-pattern
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   entrypoint: ["/usr/bin/openavx-test-pattern"]
+  #   command: ["--name", "STUDIO_COLOR_BARS", "--pattern", "bars100", "--res", "1080p", "--fps", "60"]

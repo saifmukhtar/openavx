@@ -1,0 +1,30 @@
+name: Feature Request
+description: Propose a new CLI option, API capability, or protocol improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Use Case
+      description: What broadcast, streaming, or build workflow problem does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed CLI or API Behavior
+      description: Describe the expected flag, config key, or C/C++ API behavior (note if it stays dependency-free under C99).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pr_interest
+    attributes:
+      label: Pull Request
+      options:
+        - Just suggesting an idea
+        - I would like to implement this in a PR
+    validations:
+      required: false

@@ -1,0 +1,1 @@
+REGISTER TestSource|127.0.0.1:7960|public,production
