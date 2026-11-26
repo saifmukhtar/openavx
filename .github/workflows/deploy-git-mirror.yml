@@ -1,0 +1,56 @@
+name: Deploy git.openavx.xyz
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-git-mirror
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & Deploy Static Git Mirror
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout openavx (full history)
+        uses: actions/checkout@v4
+        with:
+          path: openavx
+          fetch-depth: 0
+
+      - name: Checkout openavx-site (private)
+        uses: actions/checkout@v4
+        with:
+          repository: openavx-dev/openavx-site
+          token: ${{ secrets.SITE_REPO_TOKEN }}
+          path: openavx-site
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: openavx-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: openavx-site
+        run: npm ci
+
+      - name: Build static git site & bare mirror
+        working-directory: openavx-site
+        env:
+          OPENAVX_REPO_PATH: ../openavx
+        run: npm run build:git
+
+      - name: Deploy dist-git to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: openavx-site
+          command: pages deploy dist-git --project-name=openavx-git --branch=main
