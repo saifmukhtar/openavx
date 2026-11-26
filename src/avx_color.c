@@ -73,8 +73,28 @@ void avx_color_uyvy_to_p216(const uint8_t *src, uint8_t *dst, int width, int hei
     }
 }
 
+static inline void avx_yuv_pixel_to_rgbx(int c, int d_u, int e_v,
+                                         bool is_bt709,
+                                         uint8_t *dst, int r_off, int b_off) {
+    const int cy  = 298;
+    const int crv = is_bt709 ? 459 : 409;
+    const int cgu = is_bt709 ? 55  : 100;
+    const int cgv = is_bt709 ? 136 : 208;
+    const int cbu = is_bt709 ? 541 : 516;
+
+    int r = (cy * c + crv * e_v + 128) >> 8;
+    int g = (cy * c - cgu * d_u - cgv * e_v + 128) >> 8;
+    int b = (cy * c + cbu * d_u + 128) >> 8;
+
+    dst[r_off] = (uint8_t)(r < 0 ? 0 : (r > 255 ? 255 : r));
+    dst[1]     = (uint8_t)(g < 0 ? 0 : (g > 255 ? 255 : g));
+    dst[b_off] = (uint8_t)(b < 0 ? 0 : (b > 255 ? 255 : b));
+    dst[3]     = 255;
+}
+
 void avx_color_p216_to_rgba(const uint8_t *src, uint8_t *dst, int width, int height) {
     if (!src || !dst || width <= 0 || height <= 0) return;
+    const bool is_bt709 = (width >= 1280 || height >= 720);
     const uint16_t *src_y = (const uint16_t*)src;
     const uint16_t *src_uv = (const uint16_t*)(src + (size_t)width * height * 2);
     size_t num_pairs = ((size_t)width * height) / 2;
@@ -90,23 +110,8 @@ void avx_color_p216_to_rgba(const uint8_t *src, uint8_t *dst, int width, int hei
         int d_u = u - 128;
         int e_v = v - 128;
 
-        int r0 = (298 * c0 + 409 * e_v + 128) >> 8;
-        int g0 = (298 * c0 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b0 = (298 * c0 + 516 * d_u + 128) >> 8;
-
-        int r1 = (298 * c1 + 409 * e_v + 128) >> 8;
-        int g1 = (298 * c1 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b1 = (298 * c1 + 516 * d_u + 128) >> 8;
-
-        dst[8 * i + 0] = (uint8_t)(r0 < 0 ? 0 : (r0 > 255 ? 255 : r0));
-        dst[8 * i + 1] = (uint8_t)(g0 < 0 ? 0 : (g0 > 255 ? 255 : g0));
-        dst[8 * i + 2] = (uint8_t)(b0 < 0 ? 0 : (b0 > 255 ? 255 : b0));
-        dst[8 * i + 3] = 255;
-
-        dst[8 * i + 4] = (uint8_t)(r1 < 0 ? 0 : (r1 > 255 ? 255 : r1));
-        dst[8 * i + 5] = (uint8_t)(g1 < 0 ? 0 : (g1 > 255 ? 255 : g1));
-        dst[8 * i + 6] = (uint8_t)(b1 < 0 ? 0 : (b1 > 255 ? 255 : b1));
-        dst[8 * i + 7] = 255;
+        avx_yuv_pixel_to_rgbx(c0, d_u, e_v, is_bt709, dst + 8 * i, 0, 2);
+        avx_yuv_pixel_to_rgbx(c1, d_u, e_v, is_bt709, dst + 8 * i + 4, 0, 2);
     }
 }
 
@@ -213,6 +218,7 @@ static void avx_color_nv12_to_rgb32(const uint8_t *y_src, size_t y_stride,
 
     int half_h = (height + 1) / 2;
     int half_w = (width + 1) / 2;
+    const bool is_bt709 = (width >= 1280 || height >= 720);
     const int r_off = is_bgra ? 2 : 0;
     const int b_off = is_bgra ? 0 : 2;
 
@@ -232,35 +238,23 @@ static void avx_color_nv12_to_rgb32(const uint8_t *y_src, size_t y_stride,
             int e_v = v - 128;
 
             /* Row 0, pixel 0 */
-            int c00 = y_row0[2 * x2 + 0] - 16;
-            dst_row0[8 * x2 + r_off] = avx_clamp_u8((298 * c00 + 409 * e_v + 128) >> 8);
-            dst_row0[8 * x2 + 1]     = avx_clamp_u8((298 * c00 - 100 * d_u - 208 * e_v + 128) >> 8);
-            dst_row0[8 * x2 + b_off] = avx_clamp_u8((298 * c00 + 516 * d_u + 128) >> 8);
-            dst_row0[8 * x2 + 3]     = 255;
+            avx_yuv_pixel_to_rgbx(y_row0[2 * x2 + 0] - 16, d_u, e_v, is_bt709,
+                                  dst_row0 + 8 * x2, r_off, b_off);
 
             /* Row 0, pixel 1 */
             if (2 * x2 + 1 < width) {
-                int c01 = y_row0[2 * x2 + 1] - 16;
-                dst_row0[8 * x2 + 4 + r_off] = avx_clamp_u8((298 * c01 + 409 * e_v + 128) >> 8);
-                dst_row0[8 * x2 + 5]         = avx_clamp_u8((298 * c01 - 100 * d_u - 208 * e_v + 128) >> 8);
-                dst_row0[8 * x2 + 4 + b_off] = avx_clamp_u8((298 * c01 + 516 * d_u + 128) >> 8);
-                dst_row0[8 * x2 + 7]         = 255;
+                avx_yuv_pixel_to_rgbx(y_row0[2 * x2 + 1] - 16, d_u, e_v, is_bt709,
+                                      dst_row0 + 8 * x2 + 4, r_off, b_off);
             }
 
             /* Row 1, pixels 0 and 1 */
             if (dst_row1) {
-                int c10 = y_row1[2 * x2 + 0] - 16;
-                dst_row1[8 * x2 + r_off] = avx_clamp_u8((298 * c10 + 409 * e_v + 128) >> 8);
-                dst_row1[8 * x2 + 1]     = avx_clamp_u8((298 * c10 - 100 * d_u - 208 * e_v + 128) >> 8);
-                dst_row1[8 * x2 + b_off] = avx_clamp_u8((298 * c10 + 516 * d_u + 128) >> 8);
-                dst_row1[8 * x2 + 3]     = 255;
+                avx_yuv_pixel_to_rgbx(y_row1[2 * x2 + 0] - 16, d_u, e_v, is_bt709,
+                                      dst_row1 + 8 * x2, r_off, b_off);
 
                 if (2 * x2 + 1 < width) {
-                    int c11 = y_row1[2 * x2 + 1] - 16;
-                    dst_row1[8 * x2 + 4 + r_off] = avx_clamp_u8((298 * c11 + 409 * e_v + 128) >> 8);
-                    dst_row1[8 * x2 + 5]         = avx_clamp_u8((298 * c11 - 100 * d_u - 208 * e_v + 128) >> 8);
-                    dst_row1[8 * x2 + 4 + b_off] = avx_clamp_u8((298 * c11 + 516 * d_u + 128) >> 8);
-                    dst_row1[8 * x2 + 7]         = 255;
+                    avx_yuv_pixel_to_rgbx(y_row1[2 * x2 + 1] - 16, d_u, e_v, is_bt709,
+                                          dst_row1 + 8 * x2 + 4, r_off, b_off);
                 }
             }
         }
@@ -349,6 +343,7 @@ void avx_color_i420_to_rgba(const uint8_t *y_src, size_t y_stride,
 
     int half_h = (height + 1) / 2;
     int half_w = (width + 1) / 2;
+    const bool is_bt709 = (width >= 1280 || height >= 720);
 
     for (int y2 = 0; y2 < half_h; ++y2) {
         int y0 = y2 * 2;
@@ -367,47 +362,23 @@ void avx_color_i420_to_rgba(const uint8_t *y_src, size_t y_stride,
             int e_v = v - 128;
 
             /* Row 0, pixel 0 */
-            int c00 = y_row0[2 * x2 + 0] - 16;
-            int r00 = (298 * c00 + 409 * e_v + 128) >> 8;
-            int g00 = (298 * c00 - 100 * d_u - 208 * e_v + 128) >> 8;
-            int b00 = (298 * c00 + 516 * d_u + 128) >> 8;
-            dst_row0[8 * x2 + 0] = (uint8_t)(r00 < 0 ? 0 : (r00 > 255 ? 255 : r00));
-            dst_row0[8 * x2 + 1] = (uint8_t)(g00 < 0 ? 0 : (g00 > 255 ? 255 : g00));
-            dst_row0[8 * x2 + 2] = (uint8_t)(b00 < 0 ? 0 : (b00 > 255 ? 255 : b00));
-            dst_row0[8 * x2 + 3] = 255;
+            avx_yuv_pixel_to_rgbx(y_row0[2 * x2 + 0] - 16, d_u, e_v, is_bt709,
+                                  dst_row0 + 8 * x2, 0, 2);
 
             /* Row 0, pixel 1 */
             if (2 * x2 + 1 < width) {
-                int c01 = y_row0[2 * x2 + 1] - 16;
-                int r01 = (298 * c01 + 409 * e_v + 128) >> 8;
-                int g01 = (298 * c01 - 100 * d_u - 208 * e_v + 128) >> 8;
-                int b01 = (298 * c01 + 516 * d_u + 128) >> 8;
-                dst_row0[8 * x2 + 4] = (uint8_t)(r01 < 0 ? 0 : (r01 > 255 ? 255 : r01));
-                dst_row0[8 * x2 + 5] = (uint8_t)(g01 < 0 ? 0 : (g01 > 255 ? 255 : g01));
-                dst_row0[8 * x2 + 6] = (uint8_t)(b01 < 0 ? 0 : (b01 > 255 ? 255 : b01));
-                dst_row0[8 * x2 + 7] = 255;
+                avx_yuv_pixel_to_rgbx(y_row0[2 * x2 + 1] - 16, d_u, e_v, is_bt709,
+                                      dst_row0 + 8 * x2 + 4, 0, 2);
             }
 
             /* Row 1, pixels 0 and 1 */
             if (dst_row1) {
-                int c10 = y_row1[2 * x2 + 0] - 16;
-                int r10 = (298 * c10 + 409 * e_v + 128) >> 8;
-                int g10 = (298 * c10 - 100 * d_u - 208 * e_v + 128) >> 8;
-                int b10 = (298 * c10 + 516 * d_u + 128) >> 8;
-                dst_row1[8 * x2 + 0] = (uint8_t)(r10 < 0 ? 0 : (r10 > 255 ? 255 : r10));
-                dst_row1[8 * x2 + 1] = (uint8_t)(g10 < 0 ? 0 : (g10 > 255 ? 255 : g10));
-                dst_row1[8 * x2 + 2] = (uint8_t)(b10 < 0 ? 0 : (b10 > 255 ? 255 : b10));
-                dst_row1[8 * x2 + 3] = 255;
+                avx_yuv_pixel_to_rgbx(y_row1[2 * x2 + 0] - 16, d_u, e_v, is_bt709,
+                                      dst_row1 + 8 * x2, 0, 2);
 
                 if (2 * x2 + 1 < width) {
-                    int c11 = y_row1[2 * x2 + 1] - 16;
-                    int r11 = (298 * c11 + 409 * e_v + 128) >> 8;
-                    int g11 = (298 * c11 - 100 * d_u - 208 * e_v + 128) >> 8;
-                    int b11 = (298 * c11 + 516 * d_u + 128) >> 8;
-                    dst_row1[8 * x2 + 4] = (uint8_t)(r11 < 0 ? 0 : (r11 > 255 ? 255 : r11));
-                    dst_row1[8 * x2 + 5] = (uint8_t)(g11 < 0 ? 0 : (g11 > 255 ? 255 : g11));
-                    dst_row1[8 * x2 + 6] = (uint8_t)(b11 < 0 ? 0 : (b11 > 255 ? 255 : b11));
-                    dst_row1[8 * x2 + 7] = 255;
+                    avx_yuv_pixel_to_rgbx(y_row1[2 * x2 + 1] - 16, d_u, e_v, is_bt709,
+                                          dst_row1 + 8 * x2 + 4, 0, 2);
                 }
             }
         }
