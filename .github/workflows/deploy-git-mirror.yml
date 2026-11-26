@@ -53,4 +53,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: openavx-site
-          command: pages deploy dist-git --project-name=openavx-git --branch=main
+          command: pages deploy dist-git --project-name=openavx-git --branch=main --commit-dirty=true
