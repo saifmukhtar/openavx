@@ -590,6 +590,58 @@ static void proof_b3_bgra_to_uyvy_parity(void) {
     exit(0);
 }
 
+static void proof_b4_hd_odd_width_uyvy_parity(void) {
+    printf("[Child] Testing HD odd-width BT.709 parity and remainder tail...\n");
+    const int dims[2][2] = { { 15, 720 }, { 1281, 720 } };
+
+    for (int d = 0; d < 2; ++d) {
+        int w = dims[d][0], h = dims[d][1];
+        size_t px = (size_t)w * (size_t)h;
+        uint8_t *uyvy = (uint8_t*)malloc(px * 2);
+        uint8_t *out_s = (uint8_t*)malloc(px * 4);
+        uint8_t *out_v = (uint8_t*)malloc(px * 4);
+        if (!uyvy || !out_s || !out_v) exit(1);
+
+        for (size_t i = 0; i < px * 2; i += 2) {
+            uyvy[i + 0] = 103; /* U for BT.709 red (odd tail reads U=103, V=128) */
+            uyvy[i + 1] = 62;  /* Y */
+            if (i + 2 < px * 2) {
+                /* For pairs, set [U, Y0, V, Y1] */
+                if ((i % 4) == 0) uyvy[i + 2] = 240;
+            }
+        }
+
+        avx_scalar_uyvy_to_rgba(uyvy, out_s, w, h);
+        avx_simd_uyvy_to_rgba(uyvy, out_v, w, h);
+        if (memcmp(out_s, out_v, px * 4) != 0) {
+            printf("[Child] FAILED: HD odd-width UYVY->RGBA parity mismatch for %dx%d!\n", w, h);
+            exit(1);
+        }
+
+        avx_scalar_uyvy_to_bgra(uyvy, out_s, w, h);
+        avx_simd_uyvy_to_bgra(uyvy, out_v, w, h);
+        if (memcmp(out_s, out_v, px * 4) != 0) {
+            printf("[Child] FAILED: HD odd-width UYVY->BGRA parity mismatch for %dx%d!\n", w, h);
+            exit(1);
+        }
+
+        /* Verify last odd pixel used BT.709 (cbu=541) rather than BT.601 (cbu=516):
+         * c0 = 62 - 16 = 46, d_u = 103 - 128 = -25 -> b = (298*46 + 541*(-25) + 128)>>8 = 1 (BT.601 gives 3) */
+        if (out_v[(px - 1) * 4 + 0] != 1) {
+            printf("[Child] FAILED: HD odd tail pixel used wrong matrix (b=%u expected 1)\n",
+                   out_v[(px - 1) * 4 + 0]);
+            exit(1);
+        }
+
+        free(uyvy);
+        free(out_s);
+        free(out_v);
+    }
+
+    printf("[Child] PASS: HD odd-width BT.709 parity and remainder tail verified\n");
+    exit(0);
+}
+
 /* ========================================================================= */
 /* MAIN TEST RUNNER                                                          */
 /* ========================================================================= */
@@ -598,7 +650,7 @@ int main(void) {
     printf("=== OpenAVX SIMD Safety & Parity Tests ===\n");
 
     int passed_count = 0;
-    int total_count = 9;
+    int total_count = 10;
 
     /* A-1 */
     audit_result_t r1 = run_monitored_crash_test(proof_a1_null_channel_pointer, 3000,
@@ -662,6 +714,13 @@ int main(void) {
                                                 0);
     if (r9.passed) passed_count++;
     printf(" [%s] %s\n", r9.passed ? "PASS" : "FAIL", r9.details);
+
+    /* B-4 */
+    audit_result_t r10 = run_monitored_crash_test(proof_b4_hd_odd_width_uyvy_parity, 3000,
+                                                 "B-4: HD odd-width BT.709 parity and remainder tail",
+                                                 0);
+    if (r10.passed) passed_count++;
+    printf(" [%s] %s\n", r10.passed ? "PASS" : "FAIL", r10.details);
 
     printf("\n[%s] openavx_simd_audit_test: %d / %d passed\n\n",
            (passed_count == total_count) ? "PASS" : "FAIL", passed_count, total_count);

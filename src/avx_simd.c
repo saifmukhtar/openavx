@@ -34,12 +34,47 @@ static inline uint8_t clamp_u8_scalar(int val) {
     return (uint8_t)val;
 }
 
-void avx_scalar_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int height) {
+typedef struct {
+    /* YUV -> RGB (256-scaled, limited range Y-16, U-128, V-128) */
+    int cy;
+    int crv;
+    int cgu;
+    int cgv;
+    int cbu;
+    /* RGB -> YUV (256-scaled, limited range +16 Y, +128 UV) */
+    int yr, yg, yb;
+    int ur, ug, ub;
+    int vr, vg, vb;
+} avx_yuv_matrix_t;
+
+static const avx_yuv_matrix_t g_yuv_bt601 = {
+    298, 409, 100, 208, 516,
+    66, 129, 25,
+    38, 74, 112,
+    112, 94, 18
+};
+
+static const avx_yuv_matrix_t g_yuv_bt709 = {
+    298, 459, 55, 136, 541,
+    47, 157, 16,
+    26, 86, 112,
+    112, 102, 10
+};
+
+static inline const avx_yuv_matrix_t* select_yuv_matrix(int width, int height) {
+    return (width >= 1280 || height >= 720) ? &g_yuv_bt709 : &g_yuv_bt601;
+}
+
+static void scalar_uyvy_to_rgbx_matrix(const uint8_t *__restrict src, uint8_t *__restrict dst,
+                                       int width, int height,
+                                       int r_off, int b_off,
+                                       const avx_yuv_matrix_t *m) {
     if (!src || !dst || width <= 0 || height <= 0) return;
     size_t total_pixels = (size_t)width * height;
     size_t num_pairs = total_pixels / 2;
-    const uint8_t *s = src;
-    uint8_t *d = dst;
+    const uint8_t *__restrict s = src;
+    uint8_t *__restrict d = dst;
+    const int cy = m->cy, crv = m->crv, cgu = m->cgu, cgv = m->cgv, cbu = m->cbu;
 
     for (size_t i = 0; i < num_pairs; ++i) {
         int u  = s[0];
@@ -53,23 +88,23 @@ void avx_scalar_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int he
         int d_u = u - 128;
         int e_v = v - 128;
 
-        int r0 = (298 * c0 + 409 * e_v + 128) >> 8;
-        int g0 = (298 * c0 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b0 = (298 * c0 + 516 * d_u + 128) >> 8;
+        int r0 = (cy * c0 + crv * e_v + 128) >> 8;
+        int g0 = (cy * c0 - cgu * d_u - cgv * e_v + 128) >> 8;
+        int b0 = (cy * c0 + cbu * d_u + 128) >> 8;
 
-        int r1 = (298 * c1 + 409 * e_v + 128) >> 8;
-        int g1 = (298 * c1 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b1 = (298 * c1 + 516 * d_u + 128) >> 8;
+        int r1 = (cy * c1 + crv * e_v + 128) >> 8;
+        int g1 = (cy * c1 - cgu * d_u - cgv * e_v + 128) >> 8;
+        int b1 = (cy * c1 + cbu * d_u + 128) >> 8;
 
-        d[0] = clamp_u8_scalar(r0);
-        d[1] = clamp_u8_scalar(g0);
-        d[2] = clamp_u8_scalar(b0);
-        d[3] = 255;
+        d[r_off] = clamp_u8_scalar(r0);
+        d[1]     = clamp_u8_scalar(g0);
+        d[b_off] = clamp_u8_scalar(b0);
+        d[3]     = 255;
 
-        d[4] = clamp_u8_scalar(r1);
-        d[5] = clamp_u8_scalar(g1);
-        d[6] = clamp_u8_scalar(b1);
-        d[7] = 255;
+        d[4 + r_off] = clamp_u8_scalar(r1);
+        d[5]         = clamp_u8_scalar(g1);
+        d[4 + b_off] = clamp_u8_scalar(b1);
+        d[7]         = 255;
 
         d += 8;
     }
@@ -84,172 +119,85 @@ void avx_scalar_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int he
         int d_u = u - 128;
         int e_v = v - 128;
 
-        int r0 = (298 * c0 + 409 * e_v + 128) >> 8;
-        int g0 = (298 * c0 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b0 = (298 * c0 + 516 * d_u + 128) >> 8;
+        int r0 = (cy * c0 + crv * e_v + 128) >> 8;
+        int g0 = (cy * c0 - cgu * d_u - cgv * e_v + 128) >> 8;
+        int b0 = (cy * c0 + cbu * d_u + 128) >> 8;
 
-        d[0] = clamp_u8_scalar(r0);
-        d[1] = clamp_u8_scalar(g0);
-        d[2] = clamp_u8_scalar(b0);
-        d[3] = 255;
+        d[r_off] = clamp_u8_scalar(r0);
+        d[1]     = clamp_u8_scalar(g0);
+        d[b_off] = clamp_u8_scalar(b0);
+        d[3]     = 255;
     }
 }
 
+void avx_scalar_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int height) {
+    scalar_uyvy_to_rgbx_matrix(src, dst, width, height, 0, 2, select_yuv_matrix(width, height));
+}
+
 void avx_scalar_uyvy_to_bgra(const uint8_t *src, uint8_t *dst, int width, int height) {
+    scalar_uyvy_to_rgbx_matrix(src, dst, width, height, 2, 0, select_yuv_matrix(width, height));
+}
+
+static void scalar_rgbx_to_uyvy_matrix(const uint8_t *__restrict src, uint8_t *__restrict dst,
+                                       int width, int height,
+                                       int r_off, int b_off,
+                                       const avx_yuv_matrix_t *m) {
     if (!src || !dst || width <= 0 || height <= 0) return;
     size_t total_pixels = (size_t)width * height;
     size_t num_pairs = total_pixels / 2;
-    const uint8_t *s = src;
-    uint8_t *d = dst;
+    const uint8_t *__restrict s = src;
+    uint8_t *__restrict d = dst;
+    const int yr = m->yr, yg = m->yg, yb = m->yb;
+    const int ur = m->ur, ug = m->ug, ub = m->ub;
+    const int vr = m->vr, vg = m->vg, vb = m->vb;
 
     for (size_t i = 0; i < num_pairs; ++i) {
-        int u  = s[0];
-        int y0 = s[1];
-        int v  = s[2];
-        int y1 = s[3];
-        s += 4;
+        int r0 = s[r_off];
+        int g0 = s[1];
+        int b0 = s[b_off];
 
-        int c0 = y0 - 16;
-        int c1 = y1 - 16;
-        int d_u = u - 128;
-        int e_v = v - 128;
+        int r1 = s[4 + r_off];
+        int g1 = s[5];
+        int b1 = s[4 + b_off];
+        s += 8;
 
-        int r0 = (298 * c0 + 409 * e_v + 128) >> 8;
-        int g0 = (298 * c0 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b0 = (298 * c0 + 516 * d_u + 128) >> 8;
+        int y0 = ((yr * r0 + yg * g0 + yb * b0 + 128) >> 8) + 16;
+        int y1 = ((yr * r1 + yg * g1 + yb * b1 + 128) >> 8) + 16;
 
-        int r1 = (298 * c1 + 409 * e_v + 128) >> 8;
-        int g1 = (298 * c1 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b1 = (298 * c1 + 516 * d_u + 128) >> 8;
+        int r_avg = (r0 + r1) >> 1;
+        int g_avg = (g0 + g1) >> 1;
+        int b_avg = (b0 + b1) >> 1;
 
-        d[0] = clamp_u8_scalar(b0);
-        d[1] = clamp_u8_scalar(g0);
-        d[2] = clamp_u8_scalar(r0);
-        d[3] = 255;
+        int u = ((-ur * r_avg - ug * g_avg + ub * b_avg + 128) >> 8) + 128;
+        int v = ((vr * r_avg - vg * g_avg - vb * b_avg + 128) >> 8) + 128;
 
-        d[4] = clamp_u8_scalar(b1);
-        d[5] = clamp_u8_scalar(g1);
-        d[6] = clamp_u8_scalar(r1);
-        d[7] = 255;
-
-        d += 8;
+        d[0] = clamp_u8_scalar(u);
+        d[1] = clamp_u8_scalar(y0);
+        d[2] = clamp_u8_scalar(v);
+        d[3] = clamp_u8_scalar(y1);
+        d += 4;
     }
 
     if (total_pixels % 2 != 0) {
-        int u  = s[0];
-        int y0 = s[1];
-        /* A w*h*2 UYVY buffer holds only [U, Y0] for the trailing odd pixel; avoid reading s[2] OOB. */
-        int v  = 128;
+        int r0 = s[r_off];
+        int g0 = s[1];
+        int b0 = s[b_off];
 
-        int c0 = y0 - 16;
-        int d_u = u - 128;
-        int e_v = v - 128;
+        int y0 = ((yr * r0 + yg * g0 + yb * b0 + 128) >> 8) + 16;
+        int u  = ((-ur * r0 - ug * g0 + ub * b0 + 128) >> 8) + 128;
 
-        int r0 = (298 * c0 + 409 * e_v + 128) >> 8;
-        int g0 = (298 * c0 - 100 * d_u - 208 * e_v + 128) >> 8;
-        int b0 = (298 * c0 + 516 * d_u + 128) >> 8;
-
-        d[0] = clamp_u8_scalar(b0);
-        d[1] = clamp_u8_scalar(g0);
-        d[2] = clamp_u8_scalar(r0);
-        d[3] = 255;
+        /* Write only [U, Y0] within the caller's w*h*2 byte contract. */
+        d[0] = clamp_u8_scalar(u);
+        d[1] = clamp_u8_scalar(y0);
     }
 }
 
 void avx_scalar_rgba_to_uyvy(const uint8_t *src, uint8_t *dst, int width, int height) {
-    if (!src || !dst || width <= 0 || height <= 0) return;
-    size_t total_pixels = (size_t)width * height;
-    size_t num_pairs = total_pixels / 2;
-    const uint8_t *s = src;
-    uint8_t *d = dst;
-
-    for (size_t i = 0; i < num_pairs; ++i) {
-        int r0 = s[0];
-        int g0 = s[1];
-        int b0 = s[2];
-
-        int r1 = s[4];
-        int g1 = s[5];
-        int b1 = s[6];
-        s += 8;
-
-        int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
-        int y1 = ((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16;
-
-        int r_avg = (r0 + r1) >> 1;
-        int g_avg = (g0 + g1) >> 1;
-        int b_avg = (b0 + b1) >> 1;
-
-        int u = ((-38 * r_avg - 74 * g_avg + 112 * b_avg + 128) >> 8) + 128;
-        int v = ((112 * r_avg - 94 * g_avg - 18 * b_avg + 128) >> 8) + 128;
-
-        d[0] = clamp_u8_scalar(u);
-        d[1] = clamp_u8_scalar(y0);
-        d[2] = clamp_u8_scalar(v);
-        d[3] = clamp_u8_scalar(y1);
-        d += 4;
-    }
-
-    if (total_pixels % 2 != 0) {
-        int r0 = s[0];
-        int g0 = s[1];
-        int b0 = s[2];
-
-        int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
-        int u  = ((-38 * r0 - 74 * g0 + 112 * b0 + 128) >> 8) + 128;
-
-        /* Write only [U, Y0] within the caller's w*h*2 byte contract. */
-        d[0] = clamp_u8_scalar(u);
-        d[1] = clamp_u8_scalar(y0);
-    }
+    scalar_rgbx_to_uyvy_matrix(src, dst, width, height, 0, 2, select_yuv_matrix(width, height));
 }
 
 void avx_scalar_bgra_to_uyvy(const uint8_t *src, uint8_t *dst, int width, int height) {
-    if (!src || !dst || width <= 0 || height <= 0) return;
-    size_t total_pixels = (size_t)width * height;
-    size_t num_pairs = total_pixels / 2;
-    const uint8_t *s = src;
-    uint8_t *d = dst;
-
-    for (size_t i = 0; i < num_pairs; ++i) {
-        int b0 = s[0];
-        int g0 = s[1];
-        int r0 = s[2];
-
-        int b1 = s[4];
-        int g1 = s[5];
-        int r1 = s[6];
-        s += 8;
-
-        int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
-        int y1 = ((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16;
-
-        int r_avg = (r0 + r1) >> 1;
-        int g_avg = (g0 + g1) >> 1;
-        int b_avg = (b0 + b1) >> 1;
-
-        int u = ((-38 * r_avg - 74 * g_avg + 112 * b_avg + 128) >> 8) + 128;
-        int v = ((112 * r_avg - 94 * g_avg - 18 * b_avg + 128) >> 8) + 128;
-
-        d[0] = clamp_u8_scalar(u);
-        d[1] = clamp_u8_scalar(y0);
-        d[2] = clamp_u8_scalar(v);
-        d[3] = clamp_u8_scalar(y1);
-        d += 4;
-    }
-
-    if (total_pixels % 2 != 0) {
-        int b0 = s[0];
-        int g0 = s[1];
-        int r0 = s[2];
-
-        int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
-        int u  = ((-38 * r0 - 74 * g0 + 112 * b0 + 128) >> 8) + 128;
-
-        /* Write only [U, Y0] within the caller's w*h*2 byte contract. */
-        d[0] = clamp_u8_scalar(u);
-        d[1] = clamp_u8_scalar(y0);
-    }
+    scalar_rgbx_to_uyvy_matrix(src, dst, width, height, 2, 0, select_yuv_matrix(width, height));
 }
 
 void avx_scalar_rgba_to_bgra(const uint8_t *src, uint8_t *dst, int width, int height) {
@@ -431,18 +379,20 @@ void avx_scalar_idct_8x8_put(const int16_t in[64], uint8_t *dest, int stride) {
 #if HAS_X86_SIMD
 
 AVX_TARGET_AVX2
-static void avx2_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
+static inline void avx2_uyvy_to_rgbx_impl(const uint8_t *__restrict src, uint8_t *__restrict dst,
+                                          size_t num_pixels, bool is_bgra,
+                                          int cy, int crv, int cgu, int cgv, int cbu) {
     const __m128i mask_y = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
     const __m128i mask_u = _mm_setr_epi8(0, 0, 4, 4, 8, 8, 12, 12, -1, -1, -1, -1, -1, -1, -1, -1);
     const __m128i mask_v = _mm_setr_epi8(2, 2, 6, 6, 10, 10, 14, 14, -1, -1, -1, -1, -1, -1, -1, -1);
 
     const __m256i v16  = _mm256_set1_epi32(16);
     const __m256i v128 = _mm256_set1_epi32(128);
-    const __m256i v298 = _mm256_set1_epi32(298);
-    const __m256i v409 = _mm256_set1_epi32(409);
-    const __m256i v100 = _mm256_set1_epi32(100);
-    const __m256i v208 = _mm256_set1_epi32(208);
-    const __m256i v516 = _mm256_set1_epi32(516);
+    const __m256i vcy  = _mm256_set1_epi32(cy);
+    const __m256i vcrv = _mm256_set1_epi32(crv);
+    const __m256i vcgu = _mm256_set1_epi32(cgu);
+    const __m256i vcgv = _mm256_set1_epi32(cgv);
+    const __m256i vcbu = _mm256_set1_epi32(cbu);
     const __m256i zero = _mm256_setzero_si256();
     const __m256i max255 = _mm256_set1_epi32(255);
     const __m256i alpha = _mm256_set1_epi32((int)0xFF000000);
@@ -458,88 +408,63 @@ static void avx2_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num
         __m256i du = _mm256_sub_epi32(u, v128);
         __m256i ev = _mm256_sub_epi32(v, v128);
 
-        __m256i c298 = _mm256_mullo_epi32(c, v298);
-        __m256i r = _mm256_srai_epi32(_mm256_add_epi32(_mm256_add_epi32(c298, _mm256_mullo_epi32(ev, v409)), v128), 8);
-        __m256i g = _mm256_srai_epi32(_mm256_add_epi32(_mm256_sub_epi32(_mm256_sub_epi32(c298, _mm256_mullo_epi32(du, v100)), _mm256_mullo_epi32(ev, v208)), v128), 8);
-        __m256i b = _mm256_srai_epi32(_mm256_add_epi32(_mm256_add_epi32(c298, _mm256_mullo_epi32(du, v516)), v128), 8);
+        __m256i cyc = _mm256_mullo_epi32(c, vcy);
+        __m256i r = _mm256_srai_epi32(_mm256_add_epi32(_mm256_add_epi32(cyc, _mm256_mullo_epi32(ev, vcrv)), v128), 8);
+        __m256i g = _mm256_srai_epi32(_mm256_add_epi32(_mm256_sub_epi32(_mm256_sub_epi32(cyc, _mm256_mullo_epi32(du, vcgu)), _mm256_mullo_epi32(ev, vcgv)), v128), 8);
+        __m256i b = _mm256_srai_epi32(_mm256_add_epi32(_mm256_add_epi32(cyc, _mm256_mullo_epi32(du, vcbu)), v128), 8);
 
         r = _mm256_min_epi32(_mm256_max_epi32(r, zero), max255);
         g = _mm256_min_epi32(_mm256_max_epi32(g, zero), max255);
         b = _mm256_min_epi32(_mm256_max_epi32(b, zero), max255);
 
-        __m256i rgba = _mm256_or_si256(_mm256_or_si256(r, _mm256_slli_epi32(g, 8)),
-                                      _mm256_or_si256(_mm256_slli_epi32(b, 16), alpha));
+        __m256i out = is_bgra
+            ? _mm256_or_si256(_mm256_or_si256(b, _mm256_slli_epi32(g, 8)),
+                              _mm256_or_si256(_mm256_slli_epi32(r, 16), alpha))
+            : _mm256_or_si256(_mm256_or_si256(r, _mm256_slli_epi32(g, 8)),
+                              _mm256_or_si256(_mm256_slli_epi32(b, 16), alpha));
 
-        _mm256_storeu_si256((__m256i*)(dst + i * 32), rgba);
+        _mm256_storeu_si256((__m256i*)(dst + i * 32), out);
     }
 }
 
 AVX_TARGET_AVX2
-static void avx2_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
-    const __m128i mask_y = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
-    const __m128i mask_u = _mm_setr_epi8(0, 0, 4, 4, 8, 8, 12, 12, -1, -1, -1, -1, -1, -1, -1, -1);
-    const __m128i mask_v = _mm_setr_epi8(2, 2, 6, 6, 10, 10, 14, 14, -1, -1, -1, -1, -1, -1, -1, -1);
+static void avx2_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
+    if (m == &g_yuv_bt709) {
+        avx2_uyvy_to_rgbx_impl(src, dst, num_pixels, false, 298, 459, 55, 136, 541);
+    } else {
+        avx2_uyvy_to_rgbx_impl(src, dst, num_pixels, false, 298, 409, 100, 208, 516);
+    }
+}
 
-    const __m256i v16  = _mm256_set1_epi32(16);
-    const __m256i v128 = _mm256_set1_epi32(128);
-    const __m256i v298 = _mm256_set1_epi32(298);
-    const __m256i v409 = _mm256_set1_epi32(409);
-    const __m256i v100 = _mm256_set1_epi32(100);
-    const __m256i v208 = _mm256_set1_epi32(208);
-    const __m256i v516 = _mm256_set1_epi32(516);
-    const __m256i zero = _mm256_setzero_si256();
-    const __m256i max255 = _mm256_set1_epi32(255);
-    const __m256i alpha = _mm256_set1_epi32((int)0xFF000000);
-
-    size_t count8 = num_pixels / 8;
-    for (size_t i = 0; i < count8; ++i) {
-        __m128i raw = _mm_loadu_si128((const __m128i*)(src + i * 16));
-        __m256i y = _mm256_cvtepu8_epi32(_mm_shuffle_epi8(raw, mask_y));
-        __m256i u = _mm256_cvtepu8_epi32(_mm_shuffle_epi8(raw, mask_u));
-        __m256i v = _mm256_cvtepu8_epi32(_mm_shuffle_epi8(raw, mask_v));
-
-        __m256i c  = _mm256_sub_epi32(y, v16);
-        __m256i du = _mm256_sub_epi32(u, v128);
-        __m256i ev = _mm256_sub_epi32(v, v128);
-
-        __m256i c298 = _mm256_mullo_epi32(c, v298);
-        __m256i r = _mm256_srai_epi32(_mm256_add_epi32(_mm256_add_epi32(c298, _mm256_mullo_epi32(ev, v409)), v128), 8);
-        __m256i g = _mm256_srai_epi32(_mm256_add_epi32(_mm256_sub_epi32(_mm256_sub_epi32(c298, _mm256_mullo_epi32(du, v100)), _mm256_mullo_epi32(ev, v208)), v128), 8);
-        __m256i b = _mm256_srai_epi32(_mm256_add_epi32(_mm256_add_epi32(c298, _mm256_mullo_epi32(du, v516)), v128), 8);
-
-        r = _mm256_min_epi32(_mm256_max_epi32(r, zero), max255);
-        g = _mm256_min_epi32(_mm256_max_epi32(g, zero), max255);
-        b = _mm256_min_epi32(_mm256_max_epi32(b, zero), max255);
-
-        __m256i bgra = _mm256_or_si256(_mm256_or_si256(b, _mm256_slli_epi32(g, 8)),
-                                      _mm256_or_si256(_mm256_slli_epi32(r, 16), alpha));
-
-        _mm256_storeu_si256((__m256i*)(dst + i * 32), bgra);
+AVX_TARGET_AVX2
+static void avx2_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
+    if (m == &g_yuv_bt709) {
+        avx2_uyvy_to_rgbx_impl(src, dst, num_pixels, true, 298, 459, 55, 136, 541);
+    } else {
+        avx2_uyvy_to_rgbx_impl(src, dst, num_pixels, true, 298, 409, 100, 208, 516);
     }
 }
 
 /*
- * AVX2-targeted RGBA -> UYVY conversion block.
+ * AVX2-targeted RGBX -> UYVY conversion block.
  *
  * ARCHITECTURAL DESIGN & VECTORIZATION NOTE:
- * Unlike UYVY -> RGBA (which performs 1:1 pixel expansion), RGBA -> UYVY involves:
+ * Unlike UYVY -> RGBA (which performs 1:1 pixel expansion), RGBX -> UYVY involves:
  *   1. 4:2:2 horizontal subsampling with integer truncation: (c0 + c1) >> 1
- *   2. BT.601 matrix arithmetic across 3 color components
+ *   2. BT.709 (HD) or BT.601 (SD) matrix arithmetic across 3 color components
  *   3. 4-channel deinterleaving from [R, G, B, A] and reinterleaving to [U, Y0, V, Y1]
  *
- * On x86 (which lacks hardware deinterleave instructions like ARM NEON's vld4/vst4),
- * hand-written vector intrinsics suffer from heavy CPU Port 5 shuffle/pack contention,
- * achieving only ~450 FPS (5.3 GB/s) in microbenchmarks.
- *
- * In contrast, with __attribute__((target("avx2,fma"))), __restrict pointers, and
- * vectorization pragmas, modern GCC and Clang auto-vectorize this loop using 256-bit
- * YMM registers (vmovdqu, vpackuswb, vpermq, vpand, vpsrlw), unrolling 64 pixels
- * (256 bytes) per iteration across multiple execution ports without stalls.
- * This achieves 913+ FPS (10.59 GB/s throughput) with 100% bitwise parity against
- * the BT.601 scalar reference.
+ * Compile-time constant matrix specialization preserves compiler constant folding
+ * and vectorization throughput with bitwise parity against the scalar reference.
  */
 AVX_TARGET_AVX2
-static void avx2_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
+static inline void avx2_rgbx_to_uyvy_impl(const uint8_t *__restrict src, uint8_t *__restrict dst,
+                                          size_t num_pixels, bool is_bgra,
+                                          int yr, int yg, int yb,
+                                          int ur, int ug, int ub,
+                                          int vr, int vg, int vb) {
     size_t num_pairs = num_pixels / 2;
     const uint8_t *__restrict s = src;
     uint8_t *__restrict d = dst;
@@ -552,25 +477,35 @@ static void avx2_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
     #pragma GCC unroll 8
 #endif
     for (size_t i = 0; i < num_pairs; ++i) {
-        int r0 = s[0]; int g0 = s[1]; int b0 = s[2];
-        int r1 = s[4]; int g1 = s[5]; int b1 = s[6];
+        int r0 = s[is_bgra ? 2 : 0], g0 = s[1], b0 = s[is_bgra ? 0 : 2];
+        int r1 = s[is_bgra ? 6 : 4], g1 = s[5], b1 = s[is_bgra ? 4 : 6];
         s += 8;
 
-        int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
-        int y1 = ((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16;
+        int y0 = ((yr * r0 + yg * g0 + yb * b0 + 128) >> 8) + 16;
+        int y1 = ((yr * r1 + yg * g1 + yb * b1 + 128) >> 8) + 16;
 
         int r_avg = (r0 + r1) >> 1;
         int g_avg = (g0 + g1) >> 1;
         int b_avg = (b0 + b1) >> 1;
 
-        int u = ((-38 * r_avg - 74 * g_avg + 112 * b_avg + 128) >> 8) + 128;
-        int v = ((112 * r_avg - 94 * g_avg - 18 * b_avg + 128) >> 8) + 128;
+        int u = ((-ur * r_avg - ug * g_avg + ub * b_avg + 128) >> 8) + 128;
+        int v = ((vr * r_avg - vg * g_avg - vb * b_avg + 128) >> 8) + 128;
 
         d[0] = clamp_u8_scalar(u);
         d[1] = clamp_u8_scalar(y0);
         d[2] = clamp_u8_scalar(v);
         d[3] = clamp_u8_scalar(y1);
         d += 4;
+    }
+}
+
+AVX_TARGET_AVX2
+static void avx2_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
+    if (m == &g_yuv_bt709) {
+        avx2_rgbx_to_uyvy_impl(src, dst, num_pixels, false, 47, 157, 16, 26, 86, 112, 112, 102, 10);
+    } else {
+        avx2_rgbx_to_uyvy_impl(src, dst, num_pixels, false, 66, 129, 25, 38, 74, 112, 112, 94, 18);
     }
 }
 
@@ -580,38 +515,12 @@ static void avx2_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
  * Uses compiler-guided 256-bit AVX2 vectorization (see architectural note above).
  */
 AVX_TARGET_AVX2
-static void avx2_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
-    size_t num_pairs = num_pixels / 2;
-    const uint8_t *__restrict s = src;
-    uint8_t *__restrict d = dst;
-
-#if defined(__clang__)
-    #pragma clang loop vectorize(enable)
-    #pragma clang loop unroll_count(8)
-#elif defined(__GNUC__)
-    #pragma GCC ivdep
-    #pragma GCC unroll 8
-#endif
-    for (size_t i = 0; i < num_pairs; ++i) {
-        int b0 = s[0]; int g0 = s[1]; int r0 = s[2];
-        int b1 = s[4]; int g1 = s[5]; int r1 = s[6];
-        s += 8;
-
-        int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
-        int y1 = ((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16;
-
-        int r_avg = (r0 + r1) >> 1;
-        int g_avg = (g0 + g1) >> 1;
-        int b_avg = (b0 + b1) >> 1;
-
-        int u = ((-38 * r_avg - 74 * g_avg + 112 * b_avg + 128) >> 8) + 128;
-        int v = ((112 * r_avg - 94 * g_avg - 18 * b_avg + 128) >> 8) + 128;
-
-        d[0] = clamp_u8_scalar(u);
-        d[1] = clamp_u8_scalar(y0);
-        d[2] = clamp_u8_scalar(v);
-        d[3] = clamp_u8_scalar(y1);
-        d += 4;
+static void avx2_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
+    if (m == &g_yuv_bt709) {
+        avx2_rgbx_to_uyvy_impl(src, dst, num_pixels, true, 47, 157, 16, 26, 86, 112, 112, 102, 10);
+    } else {
+        avx2_rgbx_to_uyvy_impl(src, dst, num_pixels, true, 66, 129, 25, 38, 74, 112, 112, 94, 18);
     }
 }
 
@@ -969,13 +878,19 @@ static void avx2_idct_8x8_put_impl(const int16_t in[64], uint8_t *dest, int stri
 
 #if HAS_ARM_NEON
 
-static void neon_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
+static void neon_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
     static const uint8_t mask_y_data[16] = {1, 3, 5, 7, 9, 11, 13, 15, 0,0,0,0,0,0,0,0};
     static const uint8_t mask_u_data[16] = {0, 0, 4, 4, 8, 8, 12, 12, 0,0,0,0,0,0,0,0};
     static const uint8_t mask_v_data[16] = {2, 2, 6, 6, 10, 10, 14, 14, 0,0,0,0,0,0,0,0};
     uint8x16_t mask_y = vld1q_u8(mask_y_data);
     uint8x16_t mask_u = vld1q_u8(mask_u_data);
     uint8x16_t mask_v = vld1q_u8(mask_v_data);
+    const int32x4_t vcy  = vdupq_n_s32(m->cy);
+    const int32x4_t vcrv = vdupq_n_s32(m->crv);
+    const int32x4_t vcgu = vdupq_n_s32(m->cgu);
+    const int32x4_t vcgv = vdupq_n_s32(m->cgv);
+    const int32x4_t vcbu = vdupq_n_s32(m->cbu);
 
     size_t count8 = num_pixels / 8;
     for (size_t i = 0; i < count8; ++i) {
@@ -995,18 +910,18 @@ static void neon_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num
         int32x4_t c_low = vmovl_s16(vget_low_s16(c));
         int32x4_t du_low = vmovl_s16(vget_low_s16(du));
         int32x4_t ev_low = vmovl_s16(vget_low_s16(ev));
-        int32x4_t c298_low = vmulq_n_s32(c_low, 298);
-        int32x4_t r_low = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_low, vmulq_n_s32(ev_low, 409)), vdupq_n_s32(128)), 8);
-        int32x4_t g_low = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(c298_low, vmulq_n_s32(du_low, 100)), vmulq_n_s32(ev_low, 208)), vdupq_n_s32(128)), 8);
-        int32x4_t b_low = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_low, vmulq_n_s32(du_low, 516)), vdupq_n_s32(128)), 8);
+        int32x4_t cyc_low = vmulq_s32(c_low, vcy);
+        int32x4_t r_low = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_low, vmulq_s32(ev_low, vcrv)), vdupq_n_s32(128)), 8);
+        int32x4_t g_low = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(cyc_low, vmulq_s32(du_low, vcgu)), vmulq_s32(ev_low, vcgv)), vdupq_n_s32(128)), 8);
+        int32x4_t b_low = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_low, vmulq_s32(du_low, vcbu)), vdupq_n_s32(128)), 8);
 
         int32x4_t c_high = vmovl_s16(vget_high_s16(c));
         int32x4_t du_high = vmovl_s16(vget_high_s16(du));
         int32x4_t ev_high = vmovl_s16(vget_high_s16(ev));
-        int32x4_t c298_high = vmulq_n_s32(c_high, 298);
-        int32x4_t r_high = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_high, vmulq_n_s32(ev_high, 409)), vdupq_n_s32(128)), 8);
-        int32x4_t g_high = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(c298_high, vmulq_n_s32(du_high, 100)), vmulq_n_s32(ev_high, 208)), vdupq_n_s32(128)), 8);
-        int32x4_t b_high = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_high, vmulq_n_s32(du_high, 516)), vdupq_n_s32(128)), 8);
+        int32x4_t cyc_high = vmulq_s32(c_high, vcy);
+        int32x4_t r_high = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_high, vmulq_s32(ev_high, vcrv)), vdupq_n_s32(128)), 8);
+        int32x4_t g_high = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(cyc_high, vmulq_s32(du_high, vcgu)), vmulq_s32(ev_high, vcgv)), vdupq_n_s32(128)), 8);
+        int32x4_t b_high = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_high, vmulq_s32(du_high, vcbu)), vdupq_n_s32(128)), 8);
 
         int16x8_t r_16 = vcombine_s16(vqmovn_s32(r_low), vqmovn_s32(r_high));
         int16x8_t g_16 = vcombine_s16(vqmovn_s32(g_low), vqmovn_s32(g_high));
@@ -1021,13 +936,19 @@ static void neon_uyvy_to_rgba_block(const uint8_t *src, uint8_t *dst, size_t num
     }
 }
 
-static void neon_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
+static void neon_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
     static const uint8_t mask_y_data[16] = {1, 3, 5, 7, 9, 11, 13, 15, 0,0,0,0,0,0,0,0};
     static const uint8_t mask_u_data[16] = {0, 0, 4, 4, 8, 8, 12, 12, 0,0,0,0,0,0,0,0};
     static const uint8_t mask_v_data[16] = {2, 2, 6, 6, 10, 10, 14, 14, 0,0,0,0,0,0,0,0};
     uint8x16_t mask_y = vld1q_u8(mask_y_data);
     uint8x16_t mask_u = vld1q_u8(mask_u_data);
     uint8x16_t mask_v = vld1q_u8(mask_v_data);
+    const int32x4_t vcy  = vdupq_n_s32(m->cy);
+    const int32x4_t vcrv = vdupq_n_s32(m->crv);
+    const int32x4_t vcgu = vdupq_n_s32(m->cgu);
+    const int32x4_t vcgv = vdupq_n_s32(m->cgv);
+    const int32x4_t vcbu = vdupq_n_s32(m->cbu);
 
     size_t count8 = num_pixels / 8;
     for (size_t i = 0; i < count8; ++i) {
@@ -1047,18 +968,18 @@ static void neon_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num
         int32x4_t c_low = vmovl_s16(vget_low_s16(c));
         int32x4_t du_low = vmovl_s16(vget_low_s16(du));
         int32x4_t ev_low = vmovl_s16(vget_low_s16(ev));
-        int32x4_t c298_low = vmulq_n_s32(c_low, 298);
-        int32x4_t r_low = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_low, vmulq_n_s32(ev_low, 409)), vdupq_n_s32(128)), 8);
-        int32x4_t g_low = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(c298_low, vmulq_n_s32(du_low, 100)), vmulq_n_s32(ev_low, 208)), vdupq_n_s32(128)), 8);
-        int32x4_t b_low = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_low, vmulq_n_s32(du_low, 516)), vdupq_n_s32(128)), 8);
+        int32x4_t cyc_low = vmulq_s32(c_low, vcy);
+        int32x4_t r_low = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_low, vmulq_s32(ev_low, vcrv)), vdupq_n_s32(128)), 8);
+        int32x4_t g_low = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(cyc_low, vmulq_s32(du_low, vcgu)), vmulq_s32(ev_low, vcgv)), vdupq_n_s32(128)), 8);
+        int32x4_t b_low = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_low, vmulq_s32(du_low, vcbu)), vdupq_n_s32(128)), 8);
 
         int32x4_t c_high = vmovl_s16(vget_high_s16(c));
         int32x4_t du_high = vmovl_s16(vget_high_s16(du));
         int32x4_t ev_high = vmovl_s16(vget_high_s16(ev));
-        int32x4_t c298_high = vmulq_n_s32(c_high, 298);
-        int32x4_t r_high = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_high, vmulq_n_s32(ev_high, 409)), vdupq_n_s32(128)), 8);
-        int32x4_t g_high = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(c298_high, vmulq_n_s32(du_high, 100)), vmulq_n_s32(ev_high, 208)), vdupq_n_s32(128)), 8);
-        int32x4_t b_high = vshrq_n_s32(vaddq_s32(vaddq_s32(c298_high, vmulq_n_s32(du_high, 516)), vdupq_n_s32(128)), 8);
+        int32x4_t cyc_high = vmulq_s32(c_high, vcy);
+        int32x4_t r_high = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_high, vmulq_s32(ev_high, vcrv)), vdupq_n_s32(128)), 8);
+        int32x4_t g_high = vshrq_n_s32(vaddq_s32(vsubq_s32(vsubq_s32(cyc_high, vmulq_s32(du_high, vcgu)), vmulq_s32(ev_high, vcgv)), vdupq_n_s32(128)), 8);
+        int32x4_t b_high = vshrq_n_s32(vaddq_s32(vaddq_s32(cyc_high, vmulq_s32(du_high, vcbu)), vdupq_n_s32(128)), 8);
 
         int16x8_t r_16 = vcombine_s16(vqmovn_s32(r_low), vqmovn_s32(r_high));
         int16x8_t g_16 = vcombine_s16(vqmovn_s32(g_low), vqmovn_s32(g_high));
@@ -1073,10 +994,20 @@ static void neon_uyvy_to_bgra_block(const uint8_t *src, uint8_t *dst, size_t num
     }
 }
 
-static void neon_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
+static void neon_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
     size_t count8 = num_pixels / 8;
     const uint16x8_t c128 = vdupq_n_u16(128);
     const uint8x8_t c16 = vdup_n_u8(16);
+    const uint8x8_t vyr = vdup_n_u8((uint8_t)m->yr);
+    const uint8x8_t vyg = vdup_n_u8((uint8_t)m->yg);
+    const uint8x8_t vyb = vdup_n_u8((uint8_t)m->yb);
+    const int16x4_t vur = vdup_n_s16((int16_t)m->ur);
+    const int16x4_t vug = vdup_n_s16((int16_t)m->ug);
+    const int16x4_t vub = vdup_n_s16((int16_t)m->ub);
+    const int16x4_t vvr = vdup_n_s16((int16_t)m->vr);
+    const int16x4_t vvg = vdup_n_s16((int16_t)m->vg);
+    const int16x4_t vvb = vdup_n_s16((int16_t)m->vb);
 
     for (size_t i = 0; i < count8; ++i) {
         uint8x8x4_t rgba = vld4_u8(src + i * 32);
@@ -1084,19 +1015,16 @@ static void neon_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
         uint8x8_t g = rgba.val[1];
         uint8x8_t b = rgba.val[2];
 
-        /* Y for all 8 pixels: ((66*r + 129*g + 25*b + 128) >> 8) + 16 */
         uint16x8_t y_acc = c128;
-        y_acc = vmlal_u8(y_acc, r, vdup_n_u8(66));
-        y_acc = vmlal_u8(y_acc, g, vdup_n_u8(129));
-        y_acc = vmlal_u8(y_acc, b, vdup_n_u8(25));
+        y_acc = vmlal_u8(y_acc, r, vyr);
+        y_acc = vmlal_u8(y_acc, g, vyg);
+        y_acc = vmlal_u8(y_acc, b, vyb);
         uint8x8_t y = vadd_u8(vshrn_n_u16(y_acc, 8), c16);
 
-        /* Split Y into Y_even and Y_odd */
         uint8x8x2_t y_uzp = vuzp_u8(y, y);
         uint8x8_t y_even = y_uzp.val[0];
         uint8x8_t y_odd  = y_uzp.val[1];
 
-        /* Compute averages of adjacent pairs for R, G, B: (x0 + x1) >> 1 */
         uint8x8x2_t r_uzp = vuzp_u8(r, r);
         uint8x8x2_t g_uzp = vuzp_u8(g, g);
         uint8x8x2_t b_uzp = vuzp_u8(b, b);
@@ -1109,23 +1037,20 @@ static void neon_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
         int16x4_t g_avg = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(g_avg8)));
         int16x4_t b_avg = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(b_avg8)));
 
-        /* U = ((-38*r - 74*g + 112*b + 128) >> 8) + 128 */
         int16x4_t u_acc = vdup_n_s16(128);
-        u_acc = vmls_s16(u_acc, r_avg, vdup_n_s16(38));
-        u_acc = vmls_s16(u_acc, g_avg, vdup_n_s16(74));
-        u_acc = vmla_s16(u_acc, b_avg, vdup_n_s16(112));
+        u_acc = vmls_s16(u_acc, r_avg, vur);
+        u_acc = vmls_s16(u_acc, g_avg, vug);
+        u_acc = vmla_s16(u_acc, b_avg, vub);
         int16x4_t u_val = vadd_s16(vshr_n_s16(u_acc, 8), vdup_n_s16(128));
         uint8x8_t u_sat = vqmovun_s16(vcombine_s16(u_val, u_val));
 
-        /* V = ((112*r - 94*g - 18*b + 128) >> 8) + 128 */
         int16x4_t v_acc = vdup_n_s16(128);
-        v_acc = vmla_s16(v_acc, r_avg, vdup_n_s16(112));
-        v_acc = vmls_s16(v_acc, g_avg, vdup_n_s16(94));
-        v_acc = vmls_s16(v_acc, b_avg, vdup_n_s16(18));
+        v_acc = vmla_s16(v_acc, r_avg, vvr);
+        v_acc = vmls_s16(v_acc, g_avg, vvg);
+        v_acc = vmls_s16(v_acc, b_avg, vvb);
         int16x4_t v_val = vadd_s16(vshr_n_s16(v_acc, 8), vdup_n_s16(128));
         uint8x8_t v_sat = vqmovun_s16(vcombine_s16(v_val, v_val));
 
-        /* Interleave into UYVY: [U, Y_even, V, Y_odd] and write 128 bits directly */
         uint8x8x2_t p0 = vzip_u8(u_sat, y_even);
         uint8x8x2_t p1 = vzip_u8(v_sat, y_odd);
         uint16x4x2_t res = vzip_u16(vreinterpret_u16_u8(p0.val[0]), vreinterpret_u16_u8(p1.val[0]));
@@ -1134,10 +1059,20 @@ static void neon_rgba_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
     }
 }
 
-static void neon_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels) {
+static void neon_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num_pixels,
+                                    const avx_yuv_matrix_t *m) {
     size_t count8 = num_pixels / 8;
     const uint16x8_t c128 = vdupq_n_u16(128);
     const uint8x8_t c16 = vdup_n_u8(16);
+    const uint8x8_t vyr = vdup_n_u8((uint8_t)m->yr);
+    const uint8x8_t vyg = vdup_n_u8((uint8_t)m->yg);
+    const uint8x8_t vyb = vdup_n_u8((uint8_t)m->yb);
+    const int16x4_t vur = vdup_n_s16((int16_t)m->ur);
+    const int16x4_t vug = vdup_n_s16((int16_t)m->ug);
+    const int16x4_t vub = vdup_n_s16((int16_t)m->ub);
+    const int16x4_t vvr = vdup_n_s16((int16_t)m->vr);
+    const int16x4_t vvg = vdup_n_s16((int16_t)m->vg);
+    const int16x4_t vvb = vdup_n_s16((int16_t)m->vb);
 
     for (size_t i = 0; i < count8; ++i) {
         uint8x8x4_t bgra = vld4_u8(src + i * 32);
@@ -1145,19 +1080,16 @@ static void neon_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
         uint8x8_t g = bgra.val[1];
         uint8x8_t r = bgra.val[2];
 
-        /* Y for all 8 pixels: ((66*r + 129*g + 25*b + 128) >> 8) + 16 */
         uint16x8_t y_acc = c128;
-        y_acc = vmlal_u8(y_acc, r, vdup_n_u8(66));
-        y_acc = vmlal_u8(y_acc, g, vdup_n_u8(129));
-        y_acc = vmlal_u8(y_acc, b, vdup_n_u8(25));
+        y_acc = vmlal_u8(y_acc, r, vyr);
+        y_acc = vmlal_u8(y_acc, g, vyg);
+        y_acc = vmlal_u8(y_acc, b, vyb);
         uint8x8_t y = vadd_u8(vshrn_n_u16(y_acc, 8), c16);
 
-        /* Split Y into Y_even and Y_odd */
         uint8x8x2_t y_uzp = vuzp_u8(y, y);
         uint8x8_t y_even = y_uzp.val[0];
         uint8x8_t y_odd  = y_uzp.val[1];
 
-        /* Compute averages of adjacent pairs for R, G, B: (x0 + x1) >> 1 */
         uint8x8x2_t r_uzp = vuzp_u8(r, r);
         uint8x8x2_t g_uzp = vuzp_u8(g, g);
         uint8x8x2_t b_uzp = vuzp_u8(b, b);
@@ -1170,23 +1102,20 @@ static void neon_bgra_to_uyvy_block(const uint8_t *src, uint8_t *dst, size_t num
         int16x4_t g_avg = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(g_avg8)));
         int16x4_t b_avg = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(b_avg8)));
 
-        /* U = ((-38*r - 74*g + 112*b + 128) >> 8) + 128 */
         int16x4_t u_acc = vdup_n_s16(128);
-        u_acc = vmls_s16(u_acc, r_avg, vdup_n_s16(38));
-        u_acc = vmls_s16(u_acc, g_avg, vdup_n_s16(74));
-        u_acc = vmla_s16(u_acc, b_avg, vdup_n_s16(112));
+        u_acc = vmls_s16(u_acc, r_avg, vur);
+        u_acc = vmls_s16(u_acc, g_avg, vug);
+        u_acc = vmla_s16(u_acc, b_avg, vub);
         int16x4_t u_val = vadd_s16(vshr_n_s16(u_acc, 8), vdup_n_s16(128));
         uint8x8_t u_sat = vqmovun_s16(vcombine_s16(u_val, u_val));
 
-        /* V = ((112*r - 94*g - 18*b + 128) >> 8) + 128 */
         int16x4_t v_acc = vdup_n_s16(128);
-        v_acc = vmla_s16(v_acc, r_avg, vdup_n_s16(112));
-        v_acc = vmls_s16(v_acc, g_avg, vdup_n_s16(94));
-        v_acc = vmls_s16(v_acc, b_avg, vdup_n_s16(18));
+        v_acc = vmla_s16(v_acc, r_avg, vvr);
+        v_acc = vmls_s16(v_acc, g_avg, vvg);
+        v_acc = vmls_s16(v_acc, b_avg, vvb);
         int16x4_t v_val = vadd_s16(vshr_n_s16(v_acc, 8), vdup_n_s16(128));
         uint8x8_t v_sat = vqmovun_s16(vcombine_s16(v_val, v_val));
 
-        /* Interleave into UYVY: [U, Y_even, V, Y_odd] and write 128 bits directly */
         uint8x8x2_t p0 = vzip_u8(u_sat, y_even);
         uint8x8x2_t p1 = vzip_u8(v_sat, y_odd);
         uint16x4x2_t res = vzip_u16(vreinterpret_u16_u8(p0.val[0]), vreinterpret_u16_u8(p1.val[0]));
@@ -1520,16 +1449,17 @@ const char* avx_simd_get_name(void) {
 void avx_simd_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int height) {
     if (!src || !dst || width <= 0 || height <= 0) return;
     detect_cpu_caps();
+    const avx_yuv_matrix_t *m = select_yuv_matrix(width, height);
 
 #if HAS_X86_SIMD
     if (g_simd_type == AVX_SIMD_AVX2) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        avx2_uyvy_to_rgba_block(src, dst, vector_pixels);
+        avx2_uyvy_to_rgba_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_uyvy_to_rgba(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1);
+            scalar_uyvy_to_rgbx_matrix(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1, 0, 2, m);
         }
         return;
     }
@@ -1537,32 +1467,33 @@ void avx_simd_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int heig
     if (g_simd_type == AVX_SIMD_NEON) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        neon_uyvy_to_rgba_block(src, dst, vector_pixels);
+        neon_uyvy_to_rgba_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_uyvy_to_rgba(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1);
+            scalar_uyvy_to_rgbx_matrix(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1, 0, 2, m);
         }
         return;
     }
 #endif
 
-    avx_scalar_uyvy_to_rgba(src, dst, width, height);
+    scalar_uyvy_to_rgbx_matrix(src, dst, width, height, 0, 2, m);
 }
 
 void avx_simd_uyvy_to_bgra(const uint8_t *src, uint8_t *dst, int width, int height) {
     if (!src || !dst || width <= 0 || height <= 0) return;
     detect_cpu_caps();
+    const avx_yuv_matrix_t *m = select_yuv_matrix(width, height);
 
 #if HAS_X86_SIMD
     if (g_simd_type == AVX_SIMD_AVX2) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        avx2_uyvy_to_bgra_block(src, dst, vector_pixels);
+        avx2_uyvy_to_bgra_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_uyvy_to_bgra(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1);
+            scalar_uyvy_to_rgbx_matrix(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1, 2, 0, m);
         }
         return;
     }
@@ -1570,36 +1501,37 @@ void avx_simd_uyvy_to_bgra(const uint8_t *src, uint8_t *dst, int width, int heig
     if (g_simd_type == AVX_SIMD_NEON) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        neon_uyvy_to_bgra_block(src, dst, vector_pixels);
+        neon_uyvy_to_bgra_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_uyvy_to_bgra(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1);
+            scalar_uyvy_to_rgbx_matrix(src + vector_pixels * 2, dst + vector_pixels * 4, (int)rem, 1, 2, 0, m);
         }
         return;
     }
 #endif
 
-    avx_scalar_uyvy_to_bgra(src, dst, width, height);
+    scalar_uyvy_to_rgbx_matrix(src, dst, width, height, 2, 0, m);
 }
 
 /*
  * Dispatches RGBA to UYVY 4:2:2 conversion. Uses SIMD matrix integer math for
- * BT.601 color conversion with horizontal chroma sub-sampling.
+ * BT.709 (HD) or BT.601 (SD) color conversion with horizontal chroma sub-sampling.
  */
 void avx_simd_rgba_to_uyvy(const uint8_t *src, uint8_t *dst, int width, int height) {
     if (!src || !dst || width <= 0 || height <= 0) return;
     detect_cpu_caps();
+    const avx_yuv_matrix_t *m = select_yuv_matrix(width, height);
 
 #if HAS_X86_SIMD
     if (g_simd_type == AVX_SIMD_AVX2) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        avx2_rgba_to_uyvy_block(src, dst, vector_pixels);
+        avx2_rgba_to_uyvy_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_rgba_to_uyvy(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1);
+            scalar_rgbx_to_uyvy_matrix(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1, 0, 2, m);
         }
         return;
     }
@@ -1607,32 +1539,33 @@ void avx_simd_rgba_to_uyvy(const uint8_t *src, uint8_t *dst, int width, int heig
     if (g_simd_type == AVX_SIMD_NEON) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        neon_rgba_to_uyvy_block(src, dst, vector_pixels);
+        neon_rgba_to_uyvy_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_rgba_to_uyvy(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1);
+            scalar_rgbx_to_uyvy_matrix(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1, 0, 2, m);
         }
         return;
     }
 #endif
 
-    avx_scalar_rgba_to_uyvy(src, dst, width, height);
+    scalar_rgbx_to_uyvy_matrix(src, dst, width, height, 0, 2, m);
 }
 
 void avx_simd_bgra_to_uyvy(const uint8_t *src, uint8_t *dst, int width, int height) {
     if (!src || !dst || width <= 0 || height <= 0) return;
     detect_cpu_caps();
+    const avx_yuv_matrix_t *m = select_yuv_matrix(width, height);
 
 #if HAS_X86_SIMD
     if (g_simd_type == AVX_SIMD_AVX2) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        avx2_bgra_to_uyvy_block(src, dst, vector_pixels);
+        avx2_bgra_to_uyvy_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_bgra_to_uyvy(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1);
+            scalar_rgbx_to_uyvy_matrix(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1, 2, 0, m);
         }
         return;
     }
@@ -1640,17 +1573,17 @@ void avx_simd_bgra_to_uyvy(const uint8_t *src, uint8_t *dst, int width, int heig
     if (g_simd_type == AVX_SIMD_NEON) {
         size_t total_pixels = (size_t)width * height;
         size_t vector_pixels = (total_pixels / 8) * 8;
-        neon_bgra_to_uyvy_block(src, dst, vector_pixels);
+        neon_bgra_to_uyvy_block(src, dst, vector_pixels, m);
 
         size_t rem = total_pixels - vector_pixels;
         if (rem > 0) {
-            avx_scalar_bgra_to_uyvy(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1);
+            scalar_rgbx_to_uyvy_matrix(src + vector_pixels * 4, dst + vector_pixels * 2, (int)rem, 1, 2, 0, m);
         }
         return;
     }
 #endif
 
-    avx_scalar_bgra_to_uyvy(src, dst, width, height);
+    scalar_rgbx_to_uyvy_matrix(src, dst, width, height, 2, 0, m);
 }
 
 void avx_simd_rgba_to_bgra(const uint8_t *src, uint8_t *dst, int width, int height) {

@@ -498,6 +498,85 @@ static void test_live_multiplane_separate_buffers(void) {
     printf("    -> Multi-plane separate buffer transmission with stride padding verified.\n");
 }
 
+static void test_bt709_hd_color_and_420(void) {
+    printf("[6] Testing BT.709 HD Color Matrix & 4:2:0 Roundtrips...\n");
+
+    const int w = 1280;
+    const int h = 720;
+    const size_t px = (size_t)w * (size_t)h;
+    uint8_t *rgba_in  = (uint8_t*)malloc(px * 4);
+    uint8_t *rgba_out = (uint8_t*)malloc(px * 4);
+    uint8_t *uyvy     = (uint8_t*)malloc(px * 2);
+    uint8_t *y_buf    = (uint8_t*)malloc(px);
+    uint8_t *uv_buf   = (uint8_t*)malloc(px / 2);
+    uint8_t *u_buf    = (uint8_t*)malloc(px / 4);
+    uint8_t *v_buf    = (uint8_t*)malloc(px / 4);
+    assert(rgba_in && rgba_out && uyvy && y_buf && uv_buf && u_buf && v_buf);
+
+    /* Pure red HD frame: BT.709 produces Y=63, U=102, V=240 (vs BT.601 Y=81) */
+    for (size_t i = 0; i < px; ++i) {
+        rgba_in[4 * i + 0] = 255;
+        rgba_in[4 * i + 1] = 0;
+        rgba_in[4 * i + 2] = 0;
+        rgba_in[4 * i + 3] = 255;
+    }
+
+    avx_color_rgba_to_uyvy(rgba_in, uyvy, w, h);
+    assert(uyvy[0] == 102); /* U */
+    assert(uyvy[1] == 63);  /* Y (BT.709, not BT.601 81) */
+    assert(uyvy[2] == 240); /* V */
+    assert(uyvy[3] == 63);
+
+    avx_color_uyvy_to_rgba(uyvy, rgba_out, w, h);
+    assert(abs((int)rgba_out[0] - 255) <= 3);
+    assert(rgba_out[1] <= 3);
+    assert(rgba_out[2] <= 3);
+    assert(rgba_out[3] == 255);
+
+    /* Neutral gray must have zero chroma drift */
+    memset(rgba_in, 128, px * 4);
+    avx_color_rgba_to_uyvy(rgba_in, uyvy, w, h);
+    assert(uyvy[0] == 128 && uyvy[2] == 128);
+
+    /* HD landscape (1280x720) & HD portrait (720x1280) NV12 + I420 roundtrips */
+    const int dims[2][2] = { { 1280, 720 }, { 720, 1280 } };
+    for (int d = 0; d < 2; ++d) {
+        int dw = dims[d][0], dh = dims[d][1];
+        size_t dpx = (size_t)dw * (size_t)dh;
+        for (size_t i = 0; i < dpx; ++i) {
+            rgba_in[4 * i + 0] = 255;
+            rgba_in[4 * i + 1] = 0;
+            rgba_in[4 * i + 2] = 0;
+            rgba_in[4 * i + 3] = 255;
+        }
+
+        avx_color_rgba_to_nv12(rgba_in, (size_t)dw * 4, y_buf, (size_t)dw, uv_buf, (size_t)dw, dw, dh);
+        assert(y_buf[0] == 63);
+        avx_color_nv12_to_rgba(y_buf, (size_t)dw, uv_buf, (size_t)dw, rgba_out, (size_t)dw * 4, dw, dh);
+        assert(abs((int)rgba_out[0] - 255) <= 3);
+        assert(rgba_out[1] <= 3);
+        assert(rgba_out[2] <= 3);
+
+        avx_color_rgba_to_i420(rgba_in, (size_t)dw * 4, y_buf, (size_t)dw,
+                               u_buf, (size_t)dw / 2, v_buf, (size_t)dw / 2, dw, dh);
+        assert(y_buf[0] == 63);
+        avx_color_i420_to_rgba(y_buf, (size_t)dw, u_buf, (size_t)dw / 2, v_buf, (size_t)dw / 2,
+                               rgba_out, (size_t)dw * 4, dw, dh);
+        assert(abs((int)rgba_out[0] - 255) <= 3);
+        assert(rgba_out[1] <= 3);
+        assert(rgba_out[2] <= 3);
+    }
+
+    free(rgba_in);
+    free(rgba_out);
+    free(uyvy);
+    free(y_buf);
+    free(uv_buf);
+    free(u_buf);
+    free(v_buf);
+    printf("    -> BT.709 HD UYVY, NV12, and I420 (landscape & portrait) verified.\n");
+}
+
 int main(void) {
     printf("\n=== OpenAVX Alpha & RGB Format Tests ===\n\n");
 
@@ -506,6 +585,7 @@ int main(void) {
     test_live_alpha_streaming();
     test_nv12_i420_conversions();
     test_live_multiplane_separate_buffers();
+    test_bt709_hd_color_and_420();
 
     printf("\n[PASS] openavx_alpha_color_test\n\n");
     return 0;
