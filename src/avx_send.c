@@ -80,7 +80,7 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
         slot->clients[c].last_rtt_ms = 0.0f;
         slot->clients[c].last_rtt_sample_ns = 0;
         slot->clients[c].tx_running = false;
-        slot->clients[c].tx_exited = false;
+        slot->clients[c].tx_exited = true;
         slot->clients[c].pending_close_fd = AVX_INVALID_SOCKET;
         avx_mutex_init(&slot->clients[c].tx_lock);
         avx_cond_init(&slot->clients[c].tx_cond);

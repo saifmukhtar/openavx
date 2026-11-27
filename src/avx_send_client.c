@@ -393,7 +393,7 @@ void* avx_send_client_rx_worker(void* arg) {
         for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
             if (slot->clients[i].fd == AVX_INVALID_SOCKET &&
                 slot->clients[i].pending_close_fd != AVX_INVALID_SOCKET &&
-                (slot->clients[i].tx_exited || !slot->clients[i].tx_thread_active)) {
+                slot->clients[i].tx_exited) {
                 reap_fds[nreap++] = slot->clients[i].pending_close_fd;
                 slot->clients[i].pending_close_fd = AVX_INVALID_SOCKET;
             }
@@ -866,6 +866,7 @@ void* avx_send_listen_worker(void* arg) {
             slot->clients[assigned_slot].tx_thread_active = true;
         } else {
             slot->clients[assigned_slot].tx_thread_active = false;
+            slot->clients[assigned_slot].tx_exited = true;
         }
 
         avx_mutex_unlock(&slot->lock);
