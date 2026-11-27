@@ -2098,8 +2098,9 @@ int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t *r, const void *sender_addr,
         return 0;
     }
 
+    bool nonblocking = (timeout_ms == 0);
     int64_t start_ms = avx_time_ms();
-    int64_t deadline_ms = start_ms + (timeout_ms > 0 ? timeout_ms : 100);
+    int64_t deadline_ms = nonblocking ? start_ms : (start_ms + (timeout_ms > 0 ? timeout_ms : 100));
 
     const oavx_wire_profile_t *prof = avx_wire_get_active_profile();
     uint32_t expected_magic = (prof && prof->magic_udp) ? prof->magic_udp : OAVX_UDP_MAGIC;
@@ -2107,13 +2108,16 @@ int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t *r, const void *sender_addr,
 
     while (1) {
         int64_t now_ms = avx_time_ms();
-        if (now_ms >= deadline_ms) {
+        if (!nonblocking && now_ms >= deadline_ms) {
             avx_mutex_unlock(&r->lock);
             return -1;
         }
 
-        int poll_timeout = (int)(deadline_ms - now_ms);
-        if (poll_timeout > 5) poll_timeout = 5;
+        int poll_timeout = 0;
+        if (!nonblocking) {
+            poll_timeout = (int)(deadline_ms - now_ms);
+            if (poll_timeout > 5) poll_timeout = 5;
+        }
 
         avx_pollfd_t pfd = {.fd = r->sock, .events = POLLIN, .revents = 0};
         avx_mutex_unlock(&r->lock);
@@ -2121,10 +2125,14 @@ int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t *r, const void *sender_addr,
         avx_mutex_lock(&r->lock);
 
         if (pr <= 0 || !(pfd.revents & POLLIN)) {
-            rudp_service_nacks(r, sender_addr, true);
+            rudp_service_nacks(r, sender_addr, !nonblocking);
             if (rudp_deliver_ready_slot(r, out_buf, out_max, out_size, out_fourcc, out_timecode)) {
                 avx_mutex_unlock(&r->lock);
                 return 0;
+            }
+            if (nonblocking) {
+                avx_mutex_unlock(&r->lock);
+                return -1;
             }
             continue;
         }
