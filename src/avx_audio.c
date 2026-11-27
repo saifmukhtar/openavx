@@ -1083,6 +1083,8 @@ static uint64_t gcd_u64(uint64_t a, uint64_t b) {
     return a;
 }
 
+#define AVX_RESAMPLE_PHASES 512
+
 struct avx_resampler_t {
     int in_rate;
     int out_rate;
@@ -1096,6 +1098,7 @@ struct avx_resampler_t {
     int lookbehind;
     int lookahead;
 
+    float* sinc_table; /* (AVX_RESAMPLE_PHASES + 1) * 32 taps */
     float** fifo;
     int fifo_cap;
     int fifo_count;
@@ -1166,11 +1169,35 @@ avx_resampler_t* avx_resampler_create(
     } else {
         r->lookbehind = 16;
         r->lookahead = 16;
+        r->sinc_table = (float*)malloc((size_t)(AVX_RESAMPLE_PHASES + 1) * 32 * sizeof(float));
+        if (!r->sinc_table) {
+            free(r);
+            return NULL;
+        }
+        float fc = (out_rate < in_rate) ? ((float)out_rate / (float)in_rate) : 1.0f;
+        for (int p = 0; p <= AVX_RESAMPLE_PHASES; ++p) {
+            float mu = (float)p / (float)AVX_RESAMPLE_PHASES;
+            float *row = r->sinc_table + (size_t)p * 32;
+            float wsum = 0.0f;
+            for (int j = 0; j < 32; ++j) {
+                float t = (float)(j - 15) - mu;
+                float w = sinc_func(fc * t) * blackman_window(t, 16.0f);
+                row[j] = w;
+                wsum += w;
+            }
+            if (wsum > 1e-6f) {
+                float inv = 1.0f / wsum;
+                for (int j = 0; j < 32; ++j) {
+                    row[j] *= inv;
+                }
+            }
+        }
     }
 
     r->fifo_cap = 4096;
     r->fifo = (float**)calloc((size_t)channels, sizeof(float*));
     if (!r->fifo) {
+        free(r->sinc_table);
         free(r);
         return NULL;
     }
@@ -1180,6 +1207,7 @@ avx_resampler_t* avx_resampler_create(
         if (!r->fifo[c]) {
             for (int k = 0; k < c; ++k) free(r->fifo[k]);
             free(r->fifo);
+            free(r->sinc_table);
             free(r);
             return NULL;
         }
@@ -1204,6 +1232,7 @@ void avx_resampler_destroy(avx_resampler_t* r) {
         free(r->fifo[c]);
     }
     free(r->fifo);
+    free(r->sinc_table);
     free(r);
 }
 
@@ -1300,18 +1329,16 @@ int avx_resampler_process(
             }
         } else if (r->mode == AVX_AUDIO_RESAMPLE_SINC) {
             int radius = r->lookbehind;
-            if (radius == 16) {
+            if (radius == 16 && r->sinc_table) {
                 float weights[32];
-                float wsum = 0.0f;
+                float fphase = mu * (float)AVX_RESAMPLE_PHASES;
+                int p0 = (int)fphase;
+                if (p0 >= AVX_RESAMPLE_PHASES) p0 = AVX_RESAMPLE_PHASES - 1;
+                float frac = fphase - (float)p0;
+                const float *t0 = r->sinc_table + (size_t)p0 * 32;
+                const float *t1 = t0 + 32;
                 for (int j = 0; j < 32; ++j) {
-                    float t = (float)(j - 15) - mu;
-                    float w = sinc_func(fc * t) * blackman_window(t, (float)radius);
-                    weights[j] = w;
-                    wsum += w;
-                }
-                float inv_wsum = (fabsf(wsum) > 1e-6f) ? (1.0f / wsum) : 1.0f;
-                for (int j = 0; j < 32; ++j) {
-                    weights[j] *= inv_wsum;
+                    weights[j] = t0[j] + frac * (t1[j] - t0[j]);
                 }
 
 #if AUDIO_HAS_X86_SIMD

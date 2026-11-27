@@ -45,6 +45,9 @@ typedef struct avx_framesync_t {
     int resampler_in_rate;
     int resampler_out_rate;
     int resampler_channels;
+    bool resampler_primed;
+    float* resampler_in_buf;
+    size_t resampler_in_buf_samples;
 
     /* Caller delivery buffer for audio */
     float* delivery_audio_buf;
@@ -240,6 +243,11 @@ OPENAVX_API void avx_sync_destroy(avx_sync_instance_t p_instance) {
         avx_resampler_destroy(fs->p_resampler);
         fs->p_resampler = NULL;
     }
+    if (fs->resampler_in_buf) {
+        free(fs->resampler_in_buf);
+        fs->resampler_in_buf = NULL;
+        fs->resampler_in_buf_samples = 0;
+    }
     if (fs->delivery_audio_buf) {
         free(fs->delivery_audio_buf);
         fs->delivery_audio_buf = NULL;
@@ -363,23 +371,44 @@ void avx_sync_capture_audio(
             fs->resampler_in_rate = fs->source_sample_rate;
             fs->resampler_out_rate = target_rate;
             fs->resampler_channels = target_channels;
+            fs->resampler_primed = false;
         }
 
-        /* Calculate how many source samples correspond to target_samples */
+        /* Calculate how many source samples correspond to target_samples (+ lookahead on prime) */
         int needed_source_samples = (int)ceilf((float)target_samples * (float)fs->source_sample_rate / (float)target_rate);
+        if (!fs->resampler_primed) {
+            needed_source_samples += 18; /* 16-tap SINC lookahead + 2 fractional phase margin */
+            fs->resampler_primed = true;
+        }
+
+        /* Ensure persistent resampler scratch buffer (zero hot-path malloc/free) */
+        size_t req_buf_samples = (size_t)target_channels * (size_t)needed_source_samples;
+        if (req_buf_samples > fs->resampler_in_buf_samples) {
+            float *nb = (float*)realloc(fs->resampler_in_buf, req_buf_samples * sizeof(float));
+            if (nb) {
+                fs->resampler_in_buf = nb;
+                fs->resampler_in_buf_samples = req_buf_samples;
+            }
+        }
 
         /* Prepare input channel pointers */
         float* in_ch[MAX_AUDIO_CHANNELS];
-        for (int c = 0; c < target_channels; ++c) {
-            in_ch[c] = (float*)malloc((size_t)needed_source_samples * sizeof(float));
+        if (fs->resampler_in_buf && fs->resampler_in_buf_samples >= req_buf_samples) {
+            for (int c = 0; c < target_channels; ++c) {
+                in_ch[c] = fs->resampler_in_buf + (size_t)c * (size_t)needed_source_samples;
+            }
+        } else {
+            for (int c = 0; c < target_channels; ++c) {
+                in_ch[c] = NULL;
+            }
         }
         for (int c = target_channels; c < MAX_AUDIO_CHANNELS; ++c) {
             in_ch[c] = NULL;
         }
 
-        if (fs->p_jitter_buf) {
+        if (fs->p_jitter_buf && in_ch[0]) {
             avx_audio_jitter_pull(fs->p_jitter_buf, in_ch, needed_source_samples);
-        } else {
+        } else if (in_ch[0]) {
             for (int c = 0; c < target_channels; ++c) {
                 memset(in_ch[c], 0, (size_t)needed_source_samples * sizeof(float));
             }
@@ -392,7 +421,7 @@ void avx_sync_capture_audio(
         }
 
         int produced = 0;
-        if (fs->p_resampler && needed_source_samples > 0) {
+        if (fs->p_resampler && needed_source_samples > 0 && in_ch[0]) {
             produced = avx_resampler_process(
                 fs->p_resampler,
                 (const float* const*)in_ch,
@@ -407,7 +436,6 @@ void avx_sync_capture_audio(
             if (produced < target_samples) {
                 memset(out_ch[c] + produced, 0, (size_t)(target_samples - produced) * sizeof(float));
             }
-            free(in_ch[c]);
         }
     } else {
         /* Direct pull from adaptive jitter buffer (with micro-slewing & concealment) */
