@@ -656,6 +656,12 @@ void avx_pcap_write_udp(uint32_t src_ip_net, uint16_t src_port_host, uint32_t ds
     avx_mutex_unlock(&g_pcap_lock);
 }
 
+bool avx_pcap_is_enabled(void) {
+    if (g_pcap_file != NULL) return true;
+    const char *pcap_env = getenv("OPENAVX_DUMP_PCAP");
+    return (pcap_env && pcap_env[0] != '\0');
+}
+
 void avx_pcap_write_tcp(uint32_t src_ip_net, uint16_t src_port_host, uint32_t dst_ip_net, uint16_t dst_port_host, uint32_t seq, uint32_t ack, uint8_t flags, const void* payload, size_t len) {
     avx_mutex_lock(&g_pcap_lock);
     if (!g_pcap_file) {

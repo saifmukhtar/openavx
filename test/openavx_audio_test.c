@@ -14,6 +14,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <time.h>
 #include "openavx.h"
 #include "avx_audio.h"
 #include "avx_simd.h"
@@ -1033,6 +1034,414 @@ static void test_upmix_stereo_to_5_1(void) {
     printf("  [+] Stereo -> 5.1 Surround Upmixer: PASSED\n");
 }
 
+static void test_interleaved_audio_send_formats(void) {
+    printf("[14] Testing Interleaved Audio Send Formats (FLT, S16, S32)...\n");
+
+    oavx_context_t *ctx = oavx_context_create();
+    ASSERT_TRUE(ctx != NULL);
+
+    const uint32_t frames = 960;
+    const uint16_t channels = 2;
+
+    float flt_in[960 * 2];
+    int16_t s16_in[960 * 2];
+    int32_t s32_in[960 * 2];
+    for (uint32_t i = 0; i < frames; ++i) {
+        float l = 0.5f * sinf(2.0f * (float)M_PI * 440.0f * (float)i / 48000.0f);
+        float r = 0.5f * sinf(2.0f * (float)M_PI * 1000.0f * (float)i / 48000.0f);
+        flt_in[2 * i + 0] = l;
+        flt_in[2 * i + 1] = r;
+        s16_in[2 * i + 0] = (int16_t)(l * 32768.0f);
+        s16_in[2 * i + 1] = (int16_t)(r * 32768.0f);
+        s32_in[2 * i + 0] = (int32_t)((double)l * 2147483648.0);
+        s32_in[2 * i + 1] = (int32_t)((double)r * 2147483648.0);
+    }
+
+    const oavx_audio_format_t fmts[3] = {
+        OAVX_AUDIO_FMT_FLT_INTERLEAVED,
+        OAVX_AUDIO_FMT_S16_INTERLEAVED,
+        OAVX_AUDIO_FMT_S32_INTERLEAVED
+    };
+    void *bufs[3] = { flt_in, s16_in, s32_in };
+    const size_t strides[3] = { sizeof(flt_in), sizeof(s16_in), sizeof(s32_in) };
+
+    for (int mode_idx = 0; mode_idx < 2; ++mode_idx) {
+        oavx_audio_compression_mode_e comp = (mode_idx == 0)
+            ? OAVX_AUDIO_COMPRESSION_OFF
+            : OAVX_AUDIO_COMPRESSION_MANUAL;
+
+        for (int f = 0; f < 3; ++f) {
+            oavx_stream_config_t tx_cfg = {
+                .name = "InterleavedAudioTest",
+                .direction = OAVX_DIR_TRANSMIT,
+                .clock_sync = false
+            };
+            oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+            ASSERT_TRUE(tx != NULL);
+            if (comp != OAVX_AUDIO_COMPRESSION_OFF) {
+                oavx_stream_set_audio_compression(tx, comp, 128);
+            }
+
+            const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+            ASSERT_TRUE(ep && ep->address);
+
+            oavx_stream_config_t rx_cfg = {
+                .name = "InterleavedAudioRecv",
+                .endpoint = ep->address,
+                .direction = OAVX_DIR_RECEIVE,
+                .bandwidth = OAVX_BANDWIDTH_HIGHEST,
+                .clock_sync = false
+            };
+            oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+            ASSERT_TRUE(rx != NULL);
+            oavx_stream_get_connection_count(tx, 500);
+
+            int got = 0;
+            for (int k = 0; k < 5 && !got; ++k) {
+                oavx_audio_frame_t aout = {
+                    .sample_rate = 48000,
+                    .channels = channels,
+                    .frames = frames,
+                    .format = fmts[f],
+                    .planes = { bufs[f] },
+                    .stride_bytes = strides[f],
+                    .pts_ns = (int64_t)k * 20000000LL
+                };
+                oavx_stream_send_audio(tx, &aout);
+
+                oavx_audio_frame_t ain;
+                memset(&ain, 0, sizeof(ain));
+                if (oavx_stream_receive(rx, NULL, &ain, NULL, 100) == OAVX_FRAME_TYPE_AUDIO && ain.frames == frames) {
+                    const float *l_rx = (const float*)ain.planes[0];
+                    const float *r_rx = (const float*)ain.planes[1];
+                    ASSERT_TRUE(l_rx && r_rx);
+
+                    if (comp == OAVX_AUDIO_COMPRESSION_OFF) {
+                        for (uint32_t i = 0; i < frames; ++i) {
+                            ASSERT_TRUE(fabsf(l_rx[i] - flt_in[2 * i + 0]) < 1e-4f);
+                            ASSERT_TRUE(fabsf(r_rx[i] - flt_in[2 * i + 1]) < 1e-4f);
+                        }
+                    } else {
+                        float cos440_l = 0.0f, sin440_l = 0.0f;
+                        float cos1k_l  = 0.0f, sin1k_l  = 0.0f;
+                        float cos440_r = 0.0f, sin440_r = 0.0f;
+                        float cos1k_r  = 0.0f, sin1k_r  = 0.0f;
+                        for (uint32_t i = 0; i < frames; ++i) {
+                            float p440 = 2.0f * (float)M_PI * 440.0f * (float)i / 48000.0f;
+                            float p1k  = 2.0f * (float)M_PI * 1000.0f * (float)i / 48000.0f;
+                            cos440_l += l_rx[i] * cosf(p440); sin440_l += l_rx[i] * sinf(p440);
+                            cos1k_l  += l_rx[i] * cosf(p1k);  sin1k_l  += l_rx[i] * sinf(p1k);
+                            cos440_r += r_rx[i] * cosf(p440); sin440_r += r_rx[i] * sinf(p440);
+                            cos1k_r  += r_rx[i] * cosf(p1k);  sin1k_r  += r_rx[i] * sinf(p1k);
+                        }
+                        float pwr_l_440 = cos440_l * cos440_l + sin440_l * sin440_l;
+                        float pwr_l_1k  = cos1k_l  * cos1k_l  + sin1k_l  * sin1k_l;
+                        float pwr_r_440 = cos440_r * cos440_r + sin440_r * sin440_r;
+                        float pwr_r_1k  = cos1k_r  * cos1k_r  + sin1k_r  * sin1k_r;
+                        ASSERT_TRUE(pwr_l_440 > pwr_l_1k * 4.0f);
+                        ASSERT_TRUE(pwr_r_1k  > pwr_r_440 * 4.0f);
+                    }
+                    oavx_stream_release_audio(rx, &ain);
+                    got = 1;
+                }
+            }
+            ASSERT_TRUE(got == 1);
+            oavx_stream_close(rx);
+            oavx_stream_close(tx);
+        }
+    }
+
+    oavx_context_destroy(ctx);
+    printf("  [+] Interleaved Audio Send Formats (FLT, S16, S32): PASSED\n");
+}
+
+static void test_audio_send_edge_cases(void) {
+    printf("[15] Testing Audio Send Edge Cases (Full-Scale, 16-ch, Padded Stride)...\n");
+
+    oavx_context_t *ctx = oavx_context_create();
+    ASSERT_TRUE(ctx != NULL);
+
+    /* 1. Full-scale INT16_MIN/MAX & INT32_MIN/MAX */
+    {
+        const uint32_t frames = 64;
+        const uint16_t ch = 2;
+        int16_t s16[64 * 2];
+        int32_t s32[64 * 2];
+        for (uint32_t i = 0; i < frames; ++i) {
+            s16[2 * i + 0] = (i & 1) ? INT16_MAX : INT16_MIN;
+            s16[2 * i + 1] = (i & 1) ? INT16_MIN : INT16_MAX;
+            s32[2 * i + 0] = (i & 1) ? INT32_MAX : INT32_MIN;
+            s32[2 * i + 1] = (i & 1) ? INT32_MIN : INT32_MAX;
+        }
+        const oavx_audio_format_t fmts[2] = { OAVX_AUDIO_FMT_S16_INTERLEAVED, OAVX_AUDIO_FMT_S32_INTERLEAVED };
+        void *bufs[2] = { s16, s32 };
+        for (int f = 0; f < 2; ++f) {
+            oavx_stream_config_t tx_cfg = { .name = "EdgeScaleTx", .direction = OAVX_DIR_TRANSMIT, .clock_sync = false };
+            oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+            ASSERT_TRUE(tx != NULL);
+            const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+            oavx_stream_config_t rx_cfg = { .name = "EdgeScaleRx", .endpoint = ep->address, .direction = OAVX_DIR_RECEIVE, .bandwidth = OAVX_BANDWIDTH_HIGHEST, .clock_sync = false };
+            oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+            ASSERT_TRUE(rx != NULL);
+            oavx_stream_get_connection_count(tx, 500);
+
+            int got = 0;
+            for (int k = 0; k < 5 && !got; ++k) {
+                oavx_audio_frame_t aout = {
+                    .sample_rate = 48000, .channels = ch, .frames = frames,
+                    .format = fmts[f], .planes = { bufs[f] }, .pts_ns = (int64_t)k * 10000000LL
+                };
+                oavx_stream_send_audio(tx, &aout);
+                oavx_audio_frame_t ain;
+                memset(&ain, 0, sizeof(ain));
+                if (oavx_stream_receive(rx, NULL, &ain, NULL, 100) == OAVX_FRAME_TYPE_AUDIO && ain.frames == frames) {
+                    const float *l = (const float*)ain.planes[0];
+                    const float *r = (const float*)ain.planes[1];
+                    for (uint32_t i = 0; i < frames; ++i) {
+                        float exp_l = (i & 1) ? (f == 0 ? 32767.0f / 32768.0f : 1.0f) : -1.0f;
+                        float exp_r = (i & 1) ? -1.0f : (f == 0 ? 32767.0f / 32768.0f : 1.0f);
+                        ASSERT_TRUE(fabsf(l[i] - exp_l) < 1e-6f);
+                        ASSERT_TRUE(fabsf(r[i] - exp_r) < 1e-6f);
+                    }
+                    oavx_stream_release_audio(rx, &ain);
+                    got = 1;
+                }
+            }
+            ASSERT_TRUE(got == 1);
+            oavx_stream_close(rx);
+            oavx_stream_close(tx);
+        }
+    }
+
+    /* 2. 16-channel 1280-frame (20480 samples > 16384) uncompressed & compressed (ADPCM) */
+    {
+        const uint16_t ch = 16;
+        const uint32_t frames = 1280;
+        int16_t *s16_16ch = (int16_t*)malloc((size_t)ch * frames * sizeof(int16_t));
+        ASSERT_TRUE(s16_16ch != NULL);
+        for (uint32_t i = 0; i < frames; ++i) {
+            for (uint16_t c = 0; c < ch; ++c) {
+                float val = 0.4f * sinf(2.0f * (float)M_PI * (200.0f + 50.0f * c) * (float)i / 48000.0f);
+                s16_16ch[(size_t)i * ch + c] = (int16_t)(val * 32767.0f);
+            }
+        }
+        for (int comp = 0; comp < 2; ++comp) {
+            oavx_stream_config_t tx_cfg = { .name = "Edge16ChTx", .direction = OAVX_DIR_TRANSMIT, .clock_sync = false };
+            oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+            ASSERT_TRUE(tx != NULL);
+            if (comp) oavx_stream_set_audio_compression(tx, OAVX_AUDIO_COMPRESSION_MANUAL, 256);
+            const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+            oavx_stream_config_t rx_cfg = { .name = "Edge16ChRx", .endpoint = ep->address, .direction = OAVX_DIR_RECEIVE, .bandwidth = OAVX_BANDWIDTH_HIGHEST, .clock_sync = false };
+            oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+            ASSERT_TRUE(rx != NULL);
+            oavx_stream_get_connection_count(tx, 500);
+
+            int got = 0;
+            for (int k = 0; k < 5 && !got; ++k) {
+                oavx_audio_frame_t aout = {
+                    .sample_rate = 48000, .channels = ch, .frames = frames,
+                    .format = OAVX_AUDIO_FMT_S16_INTERLEAVED, .planes = { s16_16ch }, .pts_ns = (int64_t)k * 26666666LL
+                };
+                oavx_stream_send_audio(tx, &aout);
+                oavx_audio_frame_t ain;
+                memset(&ain, 0, sizeof(ain));
+                if (oavx_stream_receive(rx, NULL, &ain, NULL, 150) == OAVX_FRAME_TYPE_AUDIO && ain.channels == ch && ain.frames > 0) {
+                    for (uint16_t c = 0; c < ch; ++c) {
+                        const float *pc = (const float*)ain.planes[c];
+                        ASSERT_TRUE(pc != NULL);
+                        float rms = 0.0f;
+                        for (uint32_t i = 0; i < ain.frames; ++i) rms += pc[i] * pc[i];
+                        ASSERT_TRUE(sqrtf(rms / ain.frames) > 0.1f);
+                    }
+                    oavx_stream_release_audio(rx, &ain);
+                    got = 1;
+                }
+            }
+            ASSERT_TRUE(got == 1);
+            oavx_stream_close(rx);
+            oavx_stream_close(tx);
+        }
+        free(s16_16ch);
+    }
+
+    /* 3. FLT_PLANAR with padded stride_bytes (single-buffer) and 4-ch non-contiguous planes */
+    {
+        const uint16_t ch = 4;
+        const uint32_t frames = 256;
+        const uint32_t stride_floats = frames + 32;
+        float *padded = (float*)calloc((size_t)ch * stride_floats, sizeof(float));
+        float *extra_ch2 = (float*)calloc(frames, sizeof(float));
+        ASSERT_TRUE(padded && extra_ch2);
+        for (uint16_t c = 0; c < ch; ++c) {
+            for (uint32_t i = 0; i < frames; ++i) {
+                padded[(size_t)c * stride_floats + i] = 0.1f * (c + 1) + 0.001f * (float)i;
+            }
+            for (uint32_t i = frames; i < stride_floats; ++i) {
+                padded[(size_t)c * stride_floats + i] = 999.0f; /* Sentinel padding */
+            }
+        }
+        for (uint32_t i = 0; i < frames; ++i) extra_ch2[i] = -0.75f;
+
+        for (int mode = 0; mode < 2; ++mode) {
+            oavx_stream_config_t tx_cfg = { .name = "EdgeStrideTx", .direction = OAVX_DIR_TRANSMIT, .clock_sync = false };
+            oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+            const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+            oavx_stream_config_t rx_cfg = { .name = "EdgeStrideRx", .endpoint = ep->address, .direction = OAVX_DIR_RECEIVE, .bandwidth = OAVX_BANDWIDTH_HIGHEST, .clock_sync = false };
+            oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+            oavx_stream_get_connection_count(tx, 500);
+
+            int got = 0;
+            for (int k = 0; k < 5 && !got; ++k) {
+                oavx_audio_frame_t aout = {
+                    .sample_rate = 48000, .channels = ch, .frames = frames,
+                    .format = OAVX_AUDIO_FMT_FLT_PLANAR,
+                    .stride_bytes = stride_floats * sizeof(float),
+                    .pts_ns = (int64_t)k * 10000000LL
+                };
+                if (mode == 0) {
+                    aout.planes[0] = padded;
+                } else {
+                    aout.planes[0] = padded;
+                    aout.planes[1] = padded + stride_floats;
+                    aout.planes[2] = extra_ch2; /* Non-contiguous ch2 */
+                    aout.planes[3] = padded + 3 * stride_floats;
+                }
+                oavx_stream_send_audio(tx, &aout);
+                oavx_audio_frame_t ain;
+                memset(&ain, 0, sizeof(ain));
+                if (oavx_stream_receive(rx, NULL, &ain, NULL, 100) == OAVX_FRAME_TYPE_AUDIO && ain.frames == frames) {
+                    for (uint16_t c = 0; c < ch; ++c) {
+                        const float *pc = (const float*)ain.planes[c];
+                        ASSERT_TRUE(pc != NULL);
+                        for (uint32_t i = 0; i < frames; ++i) {
+                            float expected = (mode == 1 && c == 2) ? -0.75f : (0.1f * (c + 1) + 0.001f * (float)i);
+                            ASSERT_TRUE(fabsf(pc[i] - expected) < 1e-5f);
+                        }
+                    }
+                    oavx_stream_release_audio(rx, &ain);
+                    got = 1;
+                }
+            }
+            ASSERT_TRUE(got == 1);
+            oavx_stream_close(rx);
+            oavx_stream_close(tx);
+        }
+        free(padded);
+        free(extra_ch2);
+    }
+
+    oavx_context_destroy(ctx);
+    printf("  [+] Audio Send Edge Cases (Full-Scale, 16-ch, Padded Stride): PASSED\n");
+}
+
+static int cmp_double_asc(const void *a, const void *b) {
+    double da = *(const double*)a;
+    double db = *(const double*)b;
+    return (da > db) - (da < db);
+}
+
+static double now_us_monotonic(void) {
+#if defined(_WIN32)
+    return ((double)clock() / (double)CLOCKS_PER_SEC) * 1e6;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec * 1e-3;
+#endif
+}
+
+static void test_simd_deinterleave_and_p99_latency(void) {
+    printf("[16] Testing SIMD Deinterleave Kernels & Send p99 Latency...\n");
+
+    /* 1. Odd frame count (963 = 120*8 + 3 tail) for FLT, S16, S32 stereo */
+    {
+        const uint32_t frames = 963;
+        float flt_in[963 * 2];
+        int16_t s16_in[963 * 2];
+        int32_t s32_in[963 * 2];
+        float out[963 * 2];
+
+        for (uint32_t i = 0; i < frames; ++i) {
+            float l = 0.5f * sinf(2.0f * (float)M_PI * 440.0f * (float)i / 48000.0f);
+            float r = -0.5f * cosf(2.0f * (float)M_PI * 1000.0f * (float)i / 48000.0f);
+            flt_in[2 * i + 0] = l;
+            flt_in[2 * i + 1] = r;
+            s16_in[2 * i + 0] = (int16_t)(l * 32767.0f);
+            s16_in[2 * i + 1] = (int16_t)(r * 32767.0f);
+            s32_in[2 * i + 0] = (int32_t)((double)l * 2147483647.0);
+            s32_in[2 * i + 1] = (int32_t)((double)r * 2147483647.0);
+        }
+
+        avx_simd_deinterleave_flt_to_planar(flt_in, out, 2, frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            ASSERT_TRUE(out[i] == flt_in[2 * i + 0]);
+            ASSERT_TRUE(out[frames + i] == flt_in[2 * i + 1]);
+        }
+
+        avx_simd_deinterleave_s16_to_planar(s16_in, out, 2, frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            ASSERT_TRUE(fabsf(out[i] - (float)s16_in[2 * i + 0] * (1.0f / 32768.0f)) < 1e-6f);
+            ASSERT_TRUE(fabsf(out[frames + i] - (float)s16_in[2 * i + 1] * (1.0f / 32768.0f)) < 1e-6f);
+        }
+
+        avx_simd_deinterleave_s32_to_planar(s32_in, out, 2, frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            ASSERT_TRUE(fabsf(out[i] - (float)s32_in[2 * i + 0] * (1.0f / 2147483648.0f)) < 1e-6f);
+            ASSERT_TRUE(fabsf(out[frames + i] - (float)s32_in[2 * i + 1] * (1.0f / 2147483648.0f)) < 1e-6f);
+        }
+    }
+
+    /* 2. p99 send latency over 1000 frames (48 kHz stereo S16_INTERLEAVED, pooled zero-malloc steady state) */
+    {
+        oavx_context_t *ctx = oavx_context_create();
+        ASSERT_TRUE(ctx != NULL);
+        oavx_stream_config_t tx_cfg = { .name = "P99AudioTx", .direction = OAVX_DIR_TRANSMIT, .clock_sync = false };
+        oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+        ASSERT_TRUE(tx != NULL);
+        const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+        oavx_stream_config_t rx_cfg = { .name = "P99AudioRx", .endpoint = ep->address, .direction = OAVX_DIR_RECEIVE, .bandwidth = OAVX_BANDWIDTH_HIGHEST, .clock_sync = false };
+        oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+        ASSERT_TRUE(rx != NULL);
+        oavx_stream_get_connection_count(tx, 500);
+
+        const uint32_t frames = 960;
+        int16_t s16_buf[960 * 2];
+        for (uint32_t i = 0; i < frames * 2; ++i) s16_buf[i] = (int16_t)(i & 0x7FF);
+
+        enum { N_ITERS = 500 };
+        double lats[N_ITERS];
+        for (int k = 0; k < N_ITERS; ++k) {
+            oavx_audio_frame_t aout = {
+                .sample_rate = 48000, .channels = 2, .frames = frames,
+                .format = OAVX_AUDIO_FMT_S16_INTERLEAVED,
+                .planes = { s16_buf },
+                .pts_ns = (int64_t)k * 20000000LL
+            };
+            double t0 = now_us_monotonic();
+            oavx_stream_send_audio(tx, &aout);
+            double t1 = now_us_monotonic();
+            lats[k] = t1 - t0;
+
+            oavx_audio_frame_t ain;
+            memset(&ain, 0, sizeof(ain));
+            if (oavx_stream_receive(rx, NULL, &ain, NULL, 0) == OAVX_FRAME_TYPE_AUDIO) {
+                oavx_stream_release_audio(rx, &ain);
+            }
+        }
+        qsort(lats, N_ITERS, sizeof(double), cmp_double_asc);
+        double p50 = lats[N_ITERS / 2];
+        double p99 = lats[(N_ITERS * 99) / 100];
+        printf("      Send Latency (960f stereo S16): p50=%.2f us, p99=%.2f us\n", p50, p99);
+        ASSERT_TRUE(p99 < 5000.0);
+
+        oavx_stream_close(rx);
+        oavx_stream_close(tx);
+        oavx_context_destroy(ctx);
+    }
+
+    printf("  [+] SIMD Deinterleave Kernels & Send p99 Latency: PASSED\n");
+}
+
 int main(void) {
     printf("=== OpenAVX Audio Engine Tests ===\n");
     printf("SIMD: %s\n\n", avx_simd_get_name());
@@ -1050,6 +1459,9 @@ int main(void) {
     test_audio_route_channels();
     test_downmix_5_1_ltrt();
     test_upmix_stereo_to_5_1();
+    test_interleaved_audio_send_formats();
+    test_audio_send_edge_cases();
+    test_simd_deinterleave_and_p99_latency();
 
     printf("\n[PASS] openavx_audio_test\n");
     return 0;
