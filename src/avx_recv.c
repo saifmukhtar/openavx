@@ -1814,9 +1814,11 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(
             return OAVX_FRAME_TYPE_ERROR;
         }
 
-        /* Enforce security sanity bounds on audio channels, samples, and payload */
-        if (ahdr.channels <= 0 || ahdr.channels > 64 || ahdr.samples < 0 || ahdr.samples > 1920000 ||
-            ahdr.payload_len > 16 * 1024 * 1024 ||
+        /* Enforce security sanity bounds on audio channels, samples, sample_rate, and payload */
+        if (ahdr.channels <= 0 || ahdr.channels > OAVX_MAX_AUDIO_CHANNELS ||
+            ahdr.samples <= 0 || ahdr.samples > 1920000 ||
+            ahdr.sample_rate <= 0 || ahdr.sample_rate > 192000 ||
+            ahdr.payload_len == 0 || ahdr.payload_len > 16 * 1024 * 1024 ||
             (uint64_t)ahdr.channels * (uint64_t)ahdr.samples * sizeof(float) > (uint64_t)ahdr.payload_len) {
             avx_socket_close(slot->tcp_conn_fd);
             slot->tcp_conn_fd = AVX_INVALID_SOCKET;
