@@ -1127,11 +1127,67 @@ static void avx_tx_enqueue_audio_shared_pkt(
 }
 
 /*
- * Ingests planar float audio. Evaluates congestion for adaptive Opus/ADPCM
- * compression; otherwise packages uncompressed 32-bit float PCM.
+ * Normalizes any supported oavx_audio_format_t (planar f32, interleaved f32/s16/s32)
+ * into contiguous planar float32 ([ch0][ch1]...).
+ */
+static void avx_convert_audio_to_planar_f32(
+    const oavx_audio_frame_t *src,
+    float *dst_planar,
+    uint16_t channels,
+    uint32_t frames
+) {
+    if (src->format == OAVX_AUDIO_FMT_FLT_INTERLEAVED) {
+        const float *s = (const float*)src->planes[0];
+        for (uint16_t c = 0; c < channels; ++c) {
+            float *d = dst_planar + (size_t)c * frames;
+            for (uint32_t i = 0; i < frames; ++i) {
+                d[i] = s[(size_t)i * channels + c];
+            }
+        }
+    } else if (src->format == OAVX_AUDIO_FMT_S16_INTERLEAVED) {
+        const int16_t *s = (const int16_t*)src->planes[0];
+        const float scale = 1.0f / 32768.0f;
+        for (uint16_t c = 0; c < channels; ++c) {
+            float *d = dst_planar + (size_t)c * frames;
+            for (uint32_t i = 0; i < frames; ++i) {
+                d[i] = (float)s[(size_t)i * channels + c] * scale;
+            }
+        }
+    } else if (src->format == OAVX_AUDIO_FMT_S32_INTERLEAVED) {
+        const int32_t *s = (const int32_t*)src->planes[0];
+        const double scale = 1.0 / 2147483648.0;
+        for (uint16_t c = 0; c < channels; ++c) {
+            float *d = dst_planar + (size_t)c * frames;
+            for (uint32_t i = 0; i < frames; ++i) {
+                d[i] = (float)((double)s[(size_t)i * channels + c] * scale);
+            }
+        }
+    } else {
+        size_t ch_bytes = (size_t)frames * sizeof(float);
+        bool separate = (channels > 1 &&
+                         src->planes[1] != NULL &&
+                         src->planes[1] != (const void*)((const float*)src->planes[0] + frames));
+        if (separate) {
+            for (uint16_t c = 0; c < channels; ++c) {
+                if (src->planes[c]) {
+                    memcpy(dst_planar + (size_t)c * frames, src->planes[c], ch_bytes);
+                } else {
+                    memset(dst_planar + (size_t)c * frames, 0, ch_bytes);
+                }
+            }
+        } else {
+            memcpy(dst_planar, src->planes[0], (size_t)channels * ch_bytes);
+        }
+    }
+}
+
+/*
+ * Ingests planar float or interleaved float/s16/s32 audio. Evaluates congestion
+ * for adaptive Opus/ADPCM compression; otherwise packages uncompressed 32-bit float PCM.
  */
 OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audio_frame_t* p_audio_data) {
     if (!p_instance || !p_audio_data) return;
+    if (p_audio_data->channels == 0 || p_audio_data->channels > OAVX_MAX_AUDIO_CHANNELS) return;
     avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
 
     avx_mutex_lock(&slot->lock);
@@ -1195,36 +1251,58 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
             slot->audio_comp_active = congested;
         }
 
-        bool separate_planes = (p_audio_data->channels > 1 &&
+        uint16_t channels = p_audio_data->channels;
+        bool is_planar_f32 = (p_audio_data->format == OAVX_AUDIO_FMT_FLT_PLANAR);
+        bool separate_planes = (is_planar_f32 &&
+                                channels > 1 &&
                                 p_audio_data->planes[1] != NULL &&
                                 p_audio_data->planes[1] != (void*)((float*)p_audio_data->planes[0] + p_audio_data->frames));
 
         if (slot->audio_comp_active) {
             /* Create or reconfigure encoder instance as necessary */
-            if (!slot->audio_encoder || slot->audio_enc_channels != (int)p_audio_data->channels ||
+            if (!slot->audio_encoder || slot->audio_enc_channels != (int)channels ||
                 slot->audio_enc_sample_rate != (int)p_audio_data->sample_rate) {
                 if (slot->audio_encoder) {
                     avx_audio_encoder_destroy(slot->audio_encoder);
                 }
-                avx_audio_codec_type_e codec_pref = (p_audio_data->channels <= 8) ? AVX_AUDIO_CODEC_OPUS : AVX_AUDIO_CODEC_ADPCM;
+                avx_audio_codec_type_e codec_pref = (channels <= 8) ? AVX_AUDIO_CODEC_OPUS : AVX_AUDIO_CODEC_ADPCM;
                 slot->audio_encoder = avx_audio_encoder_create((int)p_audio_data->sample_rate,
-                                                               (int)p_audio_data->channels,
+                                                               (int)channels,
                                                                codec_pref,
                                                                slot->audio_target_bitrate_kbps);
-                slot->audio_enc_channels = (int)p_audio_data->channels;
+                slot->audio_enc_channels = (int)channels;
                 slot->audio_enc_sample_rate = (int)p_audio_data->sample_rate;
             }
 
             if (slot->audio_encoder) {
                 const float* in_planes[OAVX_MAX_AUDIO_CHANNELS];
-                for (int c = 0; c < (int)p_audio_data->channels && c < OAVX_MAX_AUDIO_CHANNELS; ++c) {
-                    if (separate_planes) {
-                        in_planes[c] = (const float*)p_audio_data->planes[c];
-                    } else {
-                        in_planes[c] = (const float*)p_audio_data->planes[0] + (size_t)c * p_audio_data->frames;
+                float stack_planar[16384];
+                float* heap_planar = NULL;
+                size_t total_samples = (size_t)channels * p_audio_data->frames;
+
+                if (is_planar_f32) {
+                    for (int c = 0; c < (int)channels && c < OAVX_MAX_AUDIO_CHANNELS; ++c) {
+                        if (separate_planes) {
+                            in_planes[c] = (const float*)p_audio_data->planes[c];
+                        } else {
+                            in_planes[c] = (const float*)p_audio_data->planes[0] + (size_t)c * p_audio_data->frames;
+                        }
+                    }
+                } else {
+                    float* tmp_planar = (total_samples <= (sizeof(stack_planar) / sizeof(stack_planar[0])))
+                        ? stack_planar
+                        : (heap_planar = (float*)malloc(total_samples * sizeof(float)));
+                    if (!tmp_planar) {
+                        avx_mutex_unlock(&slot->lock);
+                        return;
+                    }
+                    avx_convert_audio_to_planar_f32(p_audio_data, tmp_planar, channels, p_audio_data->frames);
+                    for (int c = 0; c < (int)channels && c < OAVX_MAX_AUDIO_CHANNELS; ++c) {
+                        in_planes[c] = tmp_planar + (size_t)c * p_audio_data->frames;
                     }
                 }
                 avx_audio_encoder_feed(slot->audio_encoder, in_planes, (int)p_audio_data->frames, p_audio_data->pts_ns);
+                free(heap_planar);
 
                 uint8_t comp_buf[65536];
                 size_t comp_size = 0;
@@ -1311,20 +1389,9 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
         }
 
         memcpy(pkt->data, &hdr, sizeof(hdr));
-        if (separate_planes) {
-            size_t ch_bytes = (size_t)p_audio_data->frames * sizeof(float);
-            for (uint16_t c = 0; c < p_audio_data->channels && c < OAVX_MAX_AUDIO_CHANNELS; ++c) {
-                if (p_audio_data->planes[c]) {
-                    memcpy(pkt->data + sizeof(hdr) + c * ch_bytes, p_audio_data->planes[c], ch_bytes);
-                } else {
-                    memset(pkt->data + sizeof(hdr) + c * ch_bytes, 0, ch_bytes);
-                }
-            }
-        } else {
-            memcpy(pkt->data + sizeof(hdr), p_audio_data->planes[0], audio_bytes);
-        }
+        avx_convert_audio_to_planar_f32(p_audio_data, (float*)(pkt->data + sizeof(hdr)), channels, p_audio_data->frames);
 
-        avx_tx_enqueue_audio_shared_pkt(slot, pkt, &hdr, sizeof(hdr), p_audio_data->planes[0], audio_bytes);
+        avx_tx_enqueue_audio_shared_pkt(slot, pkt, &hdr, sizeof(hdr), pkt->data + sizeof(hdr), audio_bytes);
     }
     avx_mutex_unlock(&slot->lock);
 }

@@ -1033,6 +1033,116 @@ static void test_upmix_stereo_to_5_1(void) {
     printf("  [+] Stereo -> 5.1 Surround Upmixer: PASSED\n");
 }
 
+static void test_interleaved_audio_send_formats(void) {
+    printf("[14] Testing Interleaved Audio Send Formats (FLT, S16, S32)...\n");
+
+    oavx_context_t *ctx = oavx_context_create();
+    ASSERT_TRUE(ctx != NULL);
+
+    const uint32_t frames = 960;
+    const uint16_t channels = 2;
+
+    float flt_in[960 * 2];
+    int16_t s16_in[960 * 2];
+    int32_t s32_in[960 * 2];
+    for (uint32_t i = 0; i < frames; ++i) {
+        float l = 0.5f * sinf(2.0f * (float)M_PI * 440.0f * (float)i / 48000.0f);
+        float r = 0.5f * sinf(2.0f * (float)M_PI * 1000.0f * (float)i / 48000.0f);
+        flt_in[2 * i + 0] = l;
+        flt_in[2 * i + 1] = r;
+        s16_in[2 * i + 0] = (int16_t)(l * 32768.0f);
+        s16_in[2 * i + 1] = (int16_t)(r * 32768.0f);
+        s32_in[2 * i + 0] = (int32_t)((double)l * 2147483648.0);
+        s32_in[2 * i + 1] = (int32_t)((double)r * 2147483648.0);
+    }
+
+    const oavx_audio_format_t fmts[3] = {
+        OAVX_AUDIO_FMT_FLT_INTERLEAVED,
+        OAVX_AUDIO_FMT_S16_INTERLEAVED,
+        OAVX_AUDIO_FMT_S32_INTERLEAVED
+    };
+    void *bufs[3] = { flt_in, s16_in, s32_in };
+    const size_t strides[3] = { sizeof(flt_in), sizeof(s16_in), sizeof(s32_in) };
+
+    for (int mode_idx = 0; mode_idx < 2; ++mode_idx) {
+        oavx_audio_compression_mode_e comp = (mode_idx == 0)
+            ? OAVX_AUDIO_COMPRESSION_OFF
+            : OAVX_AUDIO_COMPRESSION_MANUAL;
+
+        for (int f = 0; f < 3; ++f) {
+            oavx_stream_config_t tx_cfg = {
+                .name = "InterleavedAudioTest",
+                .direction = OAVX_DIR_TRANSMIT,
+                .clock_sync = false
+            };
+            oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+            ASSERT_TRUE(tx != NULL);
+            if (comp != OAVX_AUDIO_COMPRESSION_OFF) {
+                oavx_stream_set_audio_compression(tx, comp, 128);
+            }
+
+            const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+            ASSERT_TRUE(ep && ep->address);
+
+            oavx_stream_config_t rx_cfg = {
+                .name = "InterleavedAudioRecv",
+                .endpoint = ep->address,
+                .direction = OAVX_DIR_RECEIVE,
+                .bandwidth = OAVX_BANDWIDTH_HIGHEST,
+                .clock_sync = false
+            };
+            oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+            ASSERT_TRUE(rx != NULL);
+            oavx_stream_get_connection_count(tx, 500);
+
+            int got = 0;
+            for (int k = 0; k < 5 && !got; ++k) {
+                oavx_audio_frame_t aout = {
+                    .sample_rate = 48000,
+                    .channels = channels,
+                    .frames = frames,
+                    .format = fmts[f],
+                    .planes = { bufs[f] },
+                    .stride_bytes = strides[f],
+                    .pts_ns = (int64_t)k * 20000000LL
+                };
+                oavx_stream_send_audio(tx, &aout);
+
+                oavx_audio_frame_t ain;
+                memset(&ain, 0, sizeof(ain));
+                if (oavx_stream_receive(rx, NULL, &ain, NULL, 100) == OAVX_FRAME_TYPE_AUDIO && ain.frames == frames) {
+                    const float *l_rx = (const float*)ain.planes[0];
+                    const float *r_rx = (const float*)ain.planes[1];
+                    ASSERT_TRUE(l_rx && r_rx);
+
+                    if (comp == OAVX_AUDIO_COMPRESSION_OFF) {
+                        for (uint32_t i = 0; i < frames; ++i) {
+                            ASSERT_TRUE(fabsf(l_rx[i] - flt_in[2 * i + 0]) < 1e-4f);
+                            ASSERT_TRUE(fabsf(r_rx[i] - flt_in[2 * i + 1]) < 1e-4f);
+                        }
+                    } else {
+                        float rms_l = 0.0f, rms_r = 0.0f;
+                        for (uint32_t i = 0; i < frames; ++i) {
+                            rms_l += l_rx[i] * l_rx[i];
+                            rms_r += r_rx[i] * r_rx[i];
+                        }
+                        ASSERT_TRUE(sqrtf(rms_l / frames) > 0.1f);
+                        ASSERT_TRUE(sqrtf(rms_r / frames) > 0.1f);
+                    }
+                    oavx_stream_release_audio(rx, &ain);
+                    got = 1;
+                }
+            }
+            ASSERT_TRUE(got == 1);
+            oavx_stream_close(rx);
+            oavx_stream_close(tx);
+        }
+    }
+
+    oavx_context_destroy(ctx);
+    printf("  [+] Interleaved Audio Send Formats (FLT, S16, S32): PASSED\n");
+}
+
 int main(void) {
     printf("=== OpenAVX Audio Engine Tests ===\n");
     printf("SIMD: %s\n\n", avx_simd_get_name());
@@ -1050,6 +1160,7 @@ int main(void) {
     test_audio_route_channels();
     test_downmix_5_1_ltrt();
     test_upmix_stereo_to_5_1();
+    test_interleaved_audio_send_formats();
 
     printf("\n[PASS] openavx_audio_test\n");
     return 0;
