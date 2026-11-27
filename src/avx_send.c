@@ -1302,10 +1302,16 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
 
     bool flush_needed = false;
     if (slot->audio_comp_mode == OAVX_AUDIO_COMPRESSION_ADAPTIVE) {
+        int64_t eval_now_ns = avx_time_ns();
+        size_t est_bytes = total_samples * sizeof(float);
         bool congested = false;
         for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
             if (slot->clients[i].fd != AVX_INVALID_SOCKET) {
                 avx_mutex_lock(&slot->clients[i].tx_lock);
+                if (slot->clients[i].queue_count == 0 && slot->clients[i].congestion_level > 0) {
+                    slot->clients[i].congestion_level = avx_send_evaluate_client_congestion(
+                        &slot->clients[i], eval_now_ns, est_bytes, 50.0f, NULL);
+                }
                 bool client_busy = (slot->clients[i].congestion_level > 0 || slot->clients[i].queue_count > 0);
                 avx_mutex_unlock(&slot->clients[i].tx_lock);
                 if (client_busy) {
