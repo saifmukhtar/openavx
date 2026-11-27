@@ -17,57 +17,57 @@
 #include "avx_wire.h"
 
 #if defined(AVX_OS_POSIX)
-    #include <net/if.h>
-    #include <ifaddrs.h>
+#include <net/if.h>
+#include <ifaddrs.h>
 #endif
 
 #if (defined(__linux__) || defined(__FreeBSD__)) && defined(_GNU_SOURCE)
-    #define AVX_HAS_MMSG 1
+#define AVX_HAS_MMSG 1
 #endif
 
 #define AVX_UDP_BATCH_SIZE 32
 
 #ifdef AVX_OS_WINDOWS
-    typedef ADDRESS_FAMILY avx_sa_family_t;
+typedef ADDRESS_FAMILY avx_sa_family_t;
 #else
-    typedef sa_family_t avx_sa_family_t;
+typedef sa_family_t avx_sa_family_t;
 #endif
 
 static inline socklen_t avx_udp_prepare_dest_addr(avx_socket_t sock, const void *dest,
                                                   struct sockaddr_storage *out_addr,
                                                   const struct sockaddr **out_dest_ptr) {
     if (!dest || !out_addr || !out_dest_ptr) return 0;
-    const struct sockaddr *sa = (const struct sockaddr*)dest;
+    const struct sockaddr *sa = (const struct sockaddr *)dest;
     avx_sa_family_t fam = sa->sa_family;
     if (fam == 0) fam = AF_INET;
 
     struct sockaddr_storage sock_addr;
     socklen_t sock_len = sizeof(sock_addr);
     avx_sa_family_t sock_fam = AF_INET;
-    if (getsockname(sock, (struct sockaddr*)&sock_addr, &sock_len) == 0) {
+    if (getsockname(sock, (struct sockaddr *)&sock_addr, &sock_len) == 0) {
         sock_fam = sock_addr.ss_family;
     }
 
     if (sock_fam == AF_INET6 && fam == AF_INET) {
-        const struct sockaddr_in *sin4 = (const struct sockaddr_in*)dest;
-        struct sockaddr_in6 *sin6 = (struct sockaddr_in6*)out_addr;
+        const struct sockaddr_in *sin4 = (const struct sockaddr_in *)dest;
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)out_addr;
         memset(sin6, 0, sizeof(*sin6));
         sin6->sin6_family = AF_INET6;
         sin6->sin6_port = sin4->sin_port;
         sin6->sin6_addr.s6_addr[10] = 0xFF;
         sin6->sin6_addr.s6_addr[11] = 0xFF;
         memcpy(&sin6->sin6_addr.s6_addr[12], &sin4->sin_addr.s_addr, 4);
-        *out_dest_ptr = (const struct sockaddr*)sin6;
+        *out_dest_ptr = (const struct sockaddr *)sin6;
         return sizeof(*sin6);
     } else if (sock_fam == AF_INET && fam == AF_INET6) {
-        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6*)dest;
+        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)dest;
         if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
-            struct sockaddr_in *sin4 = (struct sockaddr_in*)out_addr;
+            struct sockaddr_in *sin4 = (struct sockaddr_in *)out_addr;
             memset(sin4, 0, sizeof(*sin4));
             sin4->sin_family = AF_INET;
             sin4->sin_port = sin6->sin6_port;
             memcpy(&sin4->sin_addr.s_addr, &sin6->sin6_addr.s6_addr[12], 4);
-            *out_dest_ptr = (const struct sockaddr*)sin4;
+            *out_dest_ptr = (const struct sockaddr *)sin4;
             return sizeof(*sin4);
         }
         return 0;
@@ -81,14 +81,14 @@ static inline socklen_t avx_udp_prepare_dest_addr(avx_socket_t sock, const void 
 }
 
 static inline void avx_udp_tune_socket_buffers(avx_socket_t sock) {
-    int buf_sizes[] = { 16 * 1024 * 1024, 8 * 1024 * 1024, 4 * 1024 * 1024, 1024 * 1024, 256 * 1024 };
-    for (size_t i = 0; i < sizeof(buf_sizes)/sizeof(buf_sizes[0]); ++i) {
-        if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_sizes[i], sizeof(buf_sizes[i])) == 0) {
+    int buf_sizes[] = {16 * 1024 * 1024, 8 * 1024 * 1024, 4 * 1024 * 1024, 1024 * 1024, 256 * 1024};
+    for (size_t i = 0; i < sizeof(buf_sizes) / sizeof(buf_sizes[0]); ++i) {
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (const char *)&buf_sizes[i], sizeof(buf_sizes[i])) == 0) {
             break;
         }
     }
-    for (size_t i = 0; i < sizeof(buf_sizes)/sizeof(buf_sizes[0]); ++i) {
-        if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_sizes[i], sizeof(buf_sizes[i])) == 0) {
+    for (size_t i = 0; i < sizeof(buf_sizes) / sizeof(buf_sizes[0]); ++i) {
+        if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char *)&buf_sizes[i], sizeof(buf_sizes[i])) == 0) {
             break;
         }
     }
@@ -98,16 +98,15 @@ static inline void avx_udp_tune_socket_buffers(avx_socket_t sock) {
  * Creates dual-stack IPv4/IPv6 UDP socket with SO_REUSEADDR and auto-tuned socket
  * buffer sizing (SO_RCVBUF/SO_SNDBUF) sized for gigabit media streaming.
  */
-avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool reuse)
-{
+avx_socket_t avx_udp_create_socket_bind(const char *bind_ip, uint16_t port, bool reuse) {
     avx_platform_sockets_init();
     int opt = 1;
 
     /* Case A: Explicit IPv6 literal (e.g. "::1" or "[::1]" or "2001:...") */
     char unbracketed[128];
-    const char* clean_ip = bind_ip;
+    const char *clean_ip = bind_ip;
     if (bind_ip && bind_ip[0] == '[') {
-        const char* end = strchr(bind_ip, ']');
+        const char *end = strchr(bind_ip, ']');
         if (end) {
             size_t len = (size_t)(end - (bind_ip + 1));
             if (len < sizeof(unbracketed)) {
@@ -124,9 +123,9 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
         if (sock == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
         if (reuse) {
-            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 #ifdef SO_REUSEPORT
-            setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
+            setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char *)&opt, sizeof(opt));
 #endif
         }
         avx_udp_tune_socket_buffers(sock);
@@ -137,7 +136,7 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
         addr6.sin6_port = htons(port);
         addr6.sin6_addr = in6;
 
-        if (bind(sock, (struct sockaddr*)&addr6, sizeof(addr6)) < 0) {
+        if (bind(sock, (struct sockaddr *)&addr6, sizeof(addr6)) < 0) {
             avx_socket_close(sock);
             return AVX_INVALID_SOCKET;
         }
@@ -152,9 +151,9 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
             if (sock == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
             if (reuse) {
-                setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+                setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 #ifdef SO_REUSEPORT
-                setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
+                setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char *)&opt, sizeof(opt));
 #endif
             }
             avx_udp_tune_socket_buffers(sock);
@@ -165,7 +164,7 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
             addr4.sin_port = htons(port);
             addr4.sin_addr = in4;
 
-            if (bind(sock, (struct sockaddr*)&addr4, sizeof(addr4)) < 0) {
+            if (bind(sock, (struct sockaddr *)&addr4, sizeof(addr4)) < 0) {
                 avx_socket_close(sock);
                 return AVX_INVALID_SOCKET;
             }
@@ -184,11 +183,11 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
         sock = socket(AF_INET6, SOCK_DGRAM, 0);
         if (sock != AVX_INVALID_SOCKET) {
             int no = 0;
-            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&no, sizeof(no));
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&no, sizeof(no));
             if (reuse) {
-                setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+                setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 #ifdef SO_REUSEPORT
-                setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
+                setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char *)&opt, sizeof(opt));
 #endif
             }
             avx_udp_tune_socket_buffers(sock);
@@ -199,7 +198,7 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
             addr6.sin6_port = htons(port);
             addr6.sin6_addr = in6addr_any;
 
-            if (bind(sock, (struct sockaddr*)&addr6, sizeof(addr6)) == 0) {
+            if (bind(sock, (struct sockaddr *)&addr6, sizeof(addr6)) == 0) {
                 return sock;
             }
             avx_socket_close(sock);
@@ -211,9 +210,9 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
     if (sock == AVX_INVALID_SOCKET) return AVX_INVALID_SOCKET;
 
     if (reuse) {
-        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 #ifdef SO_REUSEPORT
-        setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char*)&opt, sizeof(opt));
+        setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char *)&opt, sizeof(opt));
 #endif
     }
     avx_udp_tune_socket_buffers(sock);
@@ -224,26 +223,25 @@ avx_socket_t avx_udp_create_socket_bind(const char* bind_ip, uint16_t port, bool
     addr4.sin_port = htons(port);
     addr4.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(sock, (struct sockaddr*)&addr4, sizeof(addr4)) < 0) {
+    if (bind(sock, (struct sockaddr *)&addr4, sizeof(addr4)) < 0) {
         avx_socket_close(sock);
         return AVX_INVALID_SOCKET;
     }
     return sock;
 }
 
-avx_socket_t avx_udp_create_socket(uint16_t port, bool reuse)
-{
+avx_socket_t avx_udp_create_socket(uint16_t port, bool reuse) {
     return avx_udp_create_socket_bind(NULL, port, reuse);
 }
 
 #if defined(AVX_OS_POSIX)
 /* Fallback for hosts/containers lacking a default IPv6 multicast route (ENODEV). */
-static bool avx_udp_ipv6_mcast_fallback(avx_socket_t sock, int opt, struct ipv6_mreq* mreq6) {
-    struct ifaddrs* ifaddr = NULL;
+static bool avx_udp_ipv6_mcast_fallback(avx_socket_t sock, int opt, struct ipv6_mreq *mreq6) {
+    struct ifaddrs *ifaddr = NULL;
     if (getifaddrs(&ifaddr) != 0) return false;
 
     for (int pass = 0; pass < 2; ++pass) {
-        for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
             if (!ifa->ifa_name) continue;
             if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_MULTICAST) == 0) continue;
             bool is_lo = (ifa->ifa_flags & IFF_LOOPBACK) != 0;
@@ -253,7 +251,7 @@ static bool avx_udp_ipv6_mcast_fallback(avx_socket_t sock, int opt, struct ipv6_
             if (idx == 0) continue;
 
             mreq6->ipv6mr_interface = idx;
-            if (setsockopt(sock, IPPROTO_IPV6, opt, (const char*)mreq6, sizeof(*mreq6)) == 0) {
+            if (setsockopt(sock, IPPROTO_IPV6, opt, (const char *)mreq6, sizeof(*mreq6)) == 0) {
                 freeifaddrs(ifaddr);
                 return true;
             }
@@ -265,7 +263,8 @@ static bool avx_udp_ipv6_mcast_fallback(avx_socket_t sock, int opt, struct ipv6_
 }
 #endif
 
-static bool avx_udp_multicast_membership(avx_socket_t sock, const char* mcast_addr, const char* iface_or_ip, bool join) {
+static bool avx_udp_multicast_membership(avx_socket_t sock, const char *mcast_addr, const char *iface_or_ip,
+                                         bool join) {
     if (sock == AVX_INVALID_SOCKET || !mcast_addr || mcast_addr[0] == '\0') return false;
 
     /* Check if IPv4 */
@@ -287,14 +286,14 @@ static bool avx_udp_multicast_membership(avx_socket_t sock, const char* mcast_ad
         }
 
         int opt = join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP;
-        return (setsockopt(sock, IPPROTO_IP, opt, (const char*)&mreq, sizeof(mreq)) == 0);
+        return (setsockopt(sock, IPPROTO_IP, opt, (const char *)&mreq, sizeof(mreq)) == 0);
     }
 
     /* Check if IPv6 */
     char unbracketed[128];
-    const char* clean_mcast = mcast_addr;
+    const char *clean_mcast = mcast_addr;
     if (mcast_addr[0] == '[') {
-        const char* end = strchr(mcast_addr, ']');
+        const char *end = strchr(mcast_addr, ']');
         if (end) {
             size_t len = (size_t)(end - (mcast_addr + 1));
             if (len < sizeof(unbracketed)) {
@@ -330,7 +329,7 @@ static bool avx_udp_multicast_membership(avx_socket_t sock, const char* mcast_ad
 #else
         int opt = join ? 20 : 21;
 #endif
-        if (setsockopt(sock, IPPROTO_IPV6, opt, (const char*)&mreq6, sizeof(mreq6)) == 0) {
+        if (setsockopt(sock, IPPROTO_IPV6, opt, (const char *)&mreq6, sizeof(mreq6)) == 0) {
             return true;
         }
 #if defined(AVX_OS_POSIX)
@@ -344,11 +343,11 @@ static bool avx_udp_multicast_membership(avx_socket_t sock, const char* mcast_ad
     return false;
 }
 
-bool avx_udp_join_multicast(avx_socket_t sock, const char* mcast_addr, const char* iface_or_ip) {
+bool avx_udp_join_multicast(avx_socket_t sock, const char *mcast_addr, const char *iface_or_ip) {
     return avx_udp_multicast_membership(sock, mcast_addr, iface_or_ip, true);
 }
 
-bool avx_udp_leave_multicast(avx_socket_t sock, const char* mcast_addr, const char* iface_or_ip) {
+bool avx_udp_leave_multicast(avx_socket_t sock, const char *mcast_addr, const char *iface_or_ip) {
     return avx_udp_multicast_membership(sock, mcast_addr, iface_or_ip, false);
 }
 
@@ -358,18 +357,18 @@ bool avx_udp_set_multicast_ttl(avx_socket_t sock, int ttl) {
     struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
     avx_sa_family_t fam = AF_INET;
-    if (getsockname(sock, (struct sockaddr*)&addr, &len) == 0) {
+    if (getsockname(sock, (struct sockaddr *)&addr, &len) == 0) {
         fam = addr.ss_family;
     }
 
     bool ok = false;
     unsigned char t = (unsigned char)ttl;
-    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&t, sizeof(t)) == 0) {
+    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (const char *)&t, sizeof(t)) == 0) {
         ok = true;
     }
     if (fam == AF_INET6) {
         int h = ttl;
-        if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, (const char*)&h, sizeof(h)) == 0) {
+        if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, (const char *)&h, sizeof(h)) == 0) {
             ok = true;
         }
     }
@@ -382,26 +381,25 @@ bool avx_udp_set_multicast_loop(avx_socket_t sock, bool loop) {
     struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
     avx_sa_family_t fam = AF_INET;
-    if (getsockname(sock, (struct sockaddr*)&addr, &len) == 0) {
+    if (getsockname(sock, (struct sockaddr *)&addr, &len) == 0) {
         fam = addr.ss_family;
     }
 
     bool ok = false;
     unsigned char l4 = loop ? 1 : 0;
-    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (const char*)&l4, sizeof(l4)) == 0) {
+    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (const char *)&l4, sizeof(l4)) == 0) {
         ok = true;
     }
     if (fam == AF_INET6) {
         unsigned int l6 = loop ? 1 : 0;
-        if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, (const char*)&l6, sizeof(l6)) == 0) {
+        if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, (const char *)&l6, sizeof(l6)) == 0) {
             ok = true;
         }
     }
     return ok;
 }
 
-static int avx_udp_calc_frag_count(size_t payload_len, uint16_t *out_frag_count)
-{
+static int avx_udp_calc_frag_count(size_t payload_len, uint16_t *out_frag_count) {
     size_t max_bytes = (size_t)AVX_UDP_MAX_FRAGS * (size_t)AVX_UDP_MAX_FRAG_SIZE;
     if (payload_len > max_bytes) return -1;
 
@@ -411,12 +409,9 @@ static int avx_udp_calc_frag_count(size_t payload_len, uint16_t *out_frag_count)
     return 0;
 }
 
-static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
-                                       uint32_t frame_seq, uint32_t fourcc, int64_t timecode,
-                                       const void *payload, size_t payload_len,
-                                       uint16_t send_ts_ms, uint16_t srtt_ms,
-                                       const avx_crypto_ctx_t *crypto)
-{
+static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest, uint32_t frame_seq, uint32_t fourcc,
+                                       int64_t timecode, const void *payload, size_t payload_len, uint16_t send_ts_ms,
+                                       uint16_t srtt_ms, const avx_crypto_ctx_t *crypto) {
     if (sock == AVX_INVALID_SOCKET || !dest || (!payload && payload_len > 0)) return -1;
 
     uint16_t frag_count = 0;
@@ -432,16 +427,16 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
     uint32_t pcap_dst_ip = htonl(0x7F000001);
     uint16_t pcap_dst_port = 0;
     if (dest_sa->sa_family == AF_INET) {
-        const struct sockaddr_in *s4 = (const struct sockaddr_in*)dest_sa;
+        const struct sockaddr_in *s4 = (const struct sockaddr_in *)dest_sa;
         pcap_dst_ip = s4->sin_addr.s_addr;
         pcap_dst_port = ntohs(s4->sin_port);
     } else if (dest_sa->sa_family == AF_INET6) {
-        const struct sockaddr_in6 *s6 = (const struct sockaddr_in6*)dest_sa;
+        const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)dest_sa;
         pcap_dst_port = ntohs(s6->sin6_port);
         memcpy(&pcap_dst_ip, &s6->sin6_addr.s6_addr[12], 4);
     }
 
-    const uint8_t *src = (const uint8_t*)payload;
+    const uint8_t *src = (const uint8_t *)payload;
     size_t offset = 0;
 
     const oavx_wire_profile_t *prof = avx_wire_get_active_profile();
@@ -489,22 +484,20 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
             if (crypto && crypto->enabled) {
                 hdrs[b].reserved |= AVX_UDP_FLAG_ENCRYPTED;
                 size_t enc_len = sizeof(enc_bufs[b]);
-                if (avx_crypto_encrypt_payload(crypto, frame_seq, cur_idx, frag_count,
-                                               &hdrs[b], sizeof(hdrs[b]),
-                                               src + batch_offset, chunk_len,
-                                               enc_bufs[b], &enc_len) == 0) {
+                if (avx_crypto_encrypt_payload(crypto, frame_seq, cur_idx, frag_count, &hdrs[b], sizeof(hdrs[b]),
+                                               src + batch_offset, chunk_len, enc_bufs[b], &enc_len) == 0) {
                     iovs[b][1].iov_base = enc_bufs[b];
                     iovs[b][1].iov_len = enc_len;
                 } else {
-                    iovs[b][1].iov_base = (void*)(src + batch_offset);
+                    iovs[b][1].iov_base = (void *)(src + batch_offset);
                     iovs[b][1].iov_len = chunk_len;
                 }
             } else {
-                iovs[b][1].iov_base = (void*)(src + batch_offset);
+                iovs[b][1].iov_base = (void *)(src + batch_offset);
                 iovs[b][1].iov_len = chunk_len;
             }
 
-            msgs[b].msg_hdr.msg_name = (void*)dest_sa;
+            msgs[b].msg_hdr.msg_name = (void *)dest_sa;
             msgs[b].msg_hdr.msg_namelen = dest_len;
             msgs[b].msg_hdr.msg_iov = iovs[b];
             msgs[b].msg_hdr.msg_iovlen = (iovs[b][1].iov_len > 0) ? 2 : 1;
@@ -513,13 +506,14 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
             if (cur_idx == 0 || cur_idx == frag_count - 1) {
                 size_t pcap_chunk = iovs[b][1].iov_len > 256 ? 256 : iovs[b][1].iov_len;
                 size_t pcap_frag_len = sizeof(hdrs[b]) + pcap_chunk;
-                uint8_t *pcap_buf = (uint8_t*)malloc(pcap_frag_len);
+                uint8_t *pcap_buf = (uint8_t *)malloc(pcap_frag_len);
                 if (pcap_buf) {
                     memcpy(pcap_buf, &hdrs[b], sizeof(hdrs[b]));
                     if (pcap_chunk > 0) {
                         memcpy(pcap_buf + sizeof(hdrs[b]), iovs[b][1].iov_base, pcap_chunk);
                     }
-                    avx_pcap_write_udp(htonl(0x7F000001), pcap_src_port, pcap_dst_ip, pcap_dst_port, pcap_buf, pcap_frag_len);
+                    avx_pcap_write_udp(htonl(0x7F000001), pcap_src_port, pcap_dst_ip, pcap_dst_port, pcap_buf,
+                                       pcap_frag_len);
                     free(pcap_buf);
                 }
             }
@@ -564,16 +558,14 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
         hdr.reserved = 0;
 
         uint8_t enc_buf[AVX_UDP_MAX_FRAG_SIZE + AVX_CRYPTO_OVERHEAD];
-        void *send_payload_ptr = (void*)(src + offset);
+        void *send_payload_ptr = (void *)(src + offset);
         size_t send_payload_len = chunk_len;
 
         if (crypto && crypto->enabled) {
             hdr.reserved |= AVX_UDP_FLAG_ENCRYPTED;
             size_t enc_len = sizeof(enc_buf);
-            if (avx_crypto_encrypt_payload(crypto, frame_seq, idx, frag_count,
-                                           &hdr, sizeof(hdr),
-                                           src + offset, chunk_len,
-                                           enc_buf, &enc_len) == 0) {
+            if (avx_crypto_encrypt_payload(crypto, frame_seq, idx, frag_count, &hdr, sizeof(hdr), src + offset,
+                                           chunk_len, enc_buf, &enc_len) == 0) {
                 send_payload_ptr = enc_buf;
                 send_payload_len = enc_len;
             }
@@ -581,14 +573,14 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
 
 #if defined(AVX_OS_WINDOWS)
         WSABUF wbufs[2];
-        wbufs[0].buf = (char*)&hdr;
+        wbufs[0].buf = (char *)&hdr;
         wbufs[0].len = (ULONG)sizeof(hdr);
-        wbufs[1].buf = (char*)send_payload_ptr;
+        wbufs[1].buf = (char *)send_payload_ptr;
         wbufs[1].len = (ULONG)send_payload_len;
 
         DWORD bytes_sent = 0;
-        if (WSASendTo(sock, wbufs, (send_payload_len > 0) ? 2 : 1, &bytes_sent, 0,
-                      dest_sa, (int)dest_len, NULL, NULL) == SOCKET_ERROR) {
+        if (WSASendTo(sock, wbufs, (send_payload_len > 0) ? 2 : 1, &bytes_sent, 0, dest_sa, (int)dest_len, NULL,
+                      NULL) == SOCKET_ERROR) {
             return -1;
         }
 #else
@@ -600,7 +592,7 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
 
         struct msghdr msg;
         memset(&msg, 0, sizeof(msg));
-        msg.msg_name = (void*)dest_sa;
+        msg.msg_name = (void *)dest_sa;
         msg.msg_namelen = dest_len;
         msg.msg_iov = iov;
         msg.msg_iovlen = (send_payload_len > 0) ? 2 : 1;
@@ -614,13 +606,14 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
         if (idx == 0 || idx == frag_count - 1) {
             size_t pcap_chunk = send_payload_len > 256 ? 256 : send_payload_len;
             size_t pcap_frag_len = sizeof(hdr) + pcap_chunk;
-            uint8_t *pcap_buf = (uint8_t*)malloc(pcap_frag_len);
+            uint8_t *pcap_buf = (uint8_t *)malloc(pcap_frag_len);
             if (pcap_buf) {
                 memcpy(pcap_buf, &hdr, sizeof(hdr));
                 if (pcap_chunk > 0) {
                     memcpy(pcap_buf + sizeof(hdr), send_payload_ptr, pcap_chunk);
                 }
-                avx_pcap_write_udp(htonl(0x7F000001), pcap_src_port, pcap_dst_ip, pcap_dst_port, pcap_buf, pcap_frag_len);
+                avx_pcap_write_udp(htonl(0x7F000001), pcap_src_port, pcap_dst_ip, pcap_dst_port, pcap_buf,
+                                   pcap_frag_len);
                 free(pcap_buf);
             }
         }
@@ -632,24 +625,20 @@ static int avx_udp_send_frame_internal(avx_socket_t sock, const void *dest,
 #endif
 }
 
-int avx_udp_send_frame(avx_socket_t sock, const void *dest,
-                       uint32_t frame_seq, uint32_t fourcc, int64_t timecode,
-                       const void *payload, size_t payload_len)
-{
+int avx_udp_send_frame(avx_socket_t sock, const void *dest, uint32_t frame_seq, uint32_t fourcc, int64_t timecode,
+                       const void *payload, size_t payload_len) {
     return avx_udp_send_frame_internal(sock, dest, frame_seq, fourcc, timecode, payload, payload_len,
                                        (uint16_t)(avx_time_ms() & 0xFFFF), 0, NULL);
 }
 
-int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
-                       size_t *out_size, uint32_t *out_fourcc, int64_t *out_timecode,
-                       int timeout_ms)
-{
+int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max, size_t *out_size, uint32_t *out_fourcc,
+                       int64_t *out_timecode, int timeout_ms) {
     if (sock == AVX_INVALID_SOCKET || !out_buf || !out_size) return -1;
 
     uint32_t curr_frame_seq = 0;
     uint16_t total_frags = 0;
     uint16_t received_frags = 0;
-    uint8_t received_bitmap[AVX_UDP_MAX_FRAGS / 8];
+    uint8_t received_bitmap[(AVX_UDP_MAX_FRAGS + 7) / 8];
     memset(received_bitmap, 0, sizeof(received_bitmap));
 
     size_t assembled_bytes = 0;
@@ -659,7 +648,7 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
     uint32_t compat_magic = (prof) ? prof->compat_magic_udp : 0;
 
     while (1) {
-        avx_pollfd_t pfd = { .fd = sock, .events = POLLIN, .revents = 0 };
+        avx_pollfd_t pfd = {.fd = sock, .events = POLLIN, .revents = 0};
         int pr = avx_poll(&pfd, 1, remaining_ms > 0 ? remaining_ms : 50);
         if (pr <= 0) return -1; /* Timeout or error */
 
@@ -681,7 +670,7 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
             if (num_pkts < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
                 return -1;
             }
-            ssize_t n = recv(sock, (char*)packet_bufs[0], sizeof(packet_bufs[0]), 0);
+            ssize_t n = recv(sock, (char *)packet_bufs[0], sizeof(packet_bufs[0]), 0);
             if (n <= 0) continue;
             num_pkts = 1;
             msgs[0].msg_len = (unsigned int)n;
@@ -690,11 +679,10 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
         for (int p = 0; p < num_pkts; ++p) {
             if (msgs[p].msg_len < sizeof(avx_udp_header_t)) continue;
 
-            avx_udp_header_t *hdr = (avx_udp_header_t*)packet_bufs[p];
+            avx_udp_header_t *hdr = (avx_udp_header_t *)packet_bufs[p];
             if ((hdr->magic != expected_magic && (!compat_magic || hdr->magic != compat_magic)) ||
-                hdr->frag_count == 0 || hdr->frag_count > AVX_UDP_MAX_FRAGS ||
-                hdr->frag_idx >= hdr->frag_count ||
-                hdr->payload_len > AVX_UDP_MAX_FRAG_SIZE ||
+                hdr->frag_count == 0 || (uint32_t)hdr->frag_count > (uint32_t)AVX_UDP_MAX_FRAGS ||
+                hdr->frag_idx >= hdr->frag_count || hdr->payload_len > AVX_UDP_MAX_FRAG_SIZE ||
                 msgs[p].msg_len < (sizeof(avx_udp_header_t) + hdr->payload_len)) {
                 continue;
             }
@@ -722,7 +710,8 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
 
                     size_t dest_offset = (size_t)hdr->frag_idx * AVX_UDP_MAX_FRAG_SIZE;
                     if (dest_offset + hdr->payload_len <= out_max) {
-                        memcpy((uint8_t*)out_buf + dest_offset, packet_bufs[p] + sizeof(avx_udp_header_t), hdr->payload_len);
+                        memcpy((uint8_t *)out_buf + dest_offset, packet_bufs[p] + sizeof(avx_udp_header_t),
+                               hdr->payload_len);
                         if (dest_offset + hdr->payload_len > assembled_bytes) {
                             assembled_bytes = dest_offset + hdr->payload_len;
                         }
@@ -738,15 +727,13 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
         }
 #else
         uint8_t packet_buf[sizeof(avx_udp_header_t) + AVX_UDP_MAX_FRAG_SIZE];
-        ssize_t n = recv(sock, (char*)packet_buf, sizeof(packet_buf), 0);
+        ssize_t n = recv(sock, (char *)packet_buf, sizeof(packet_buf), 0);
         if (n < (ssize_t)sizeof(avx_udp_header_t)) continue;
 
-        avx_udp_header_t *hdr = (avx_udp_header_t*)packet_buf;
-        if ((hdr->magic != expected_magic && (!compat_magic || hdr->magic != compat_magic)) ||
-            hdr->frag_count == 0 || hdr->frag_count > AVX_UDP_MAX_FRAGS ||
-            hdr->frag_idx >= hdr->frag_count ||
-            hdr->payload_len > AVX_UDP_MAX_FRAG_SIZE ||
-            n < (ssize_t)(sizeof(avx_udp_header_t) + hdr->payload_len)) {
+        avx_udp_header_t *hdr = (avx_udp_header_t *)packet_buf;
+        if ((hdr->magic != expected_magic && (!compat_magic || hdr->magic != compat_magic)) || hdr->frag_count == 0 ||
+            (uint32_t)hdr->frag_count > (uint32_t)AVX_UDP_MAX_FRAGS || hdr->frag_idx >= hdr->frag_count ||
+            hdr->payload_len > AVX_UDP_MAX_FRAG_SIZE || n < (ssize_t)(sizeof(avx_udp_header_t) + hdr->payload_len)) {
             continue;
         }
 
@@ -773,7 +760,7 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
 
                 size_t dest_offset = (size_t)hdr->frag_idx * AVX_UDP_MAX_FRAG_SIZE;
                 if (dest_offset + hdr->payload_len <= out_max) {
-                    memcpy((uint8_t*)out_buf + dest_offset, packet_buf + sizeof(avx_udp_header_t), hdr->payload_len);
+                    memcpy((uint8_t *)out_buf + dest_offset, packet_buf + sizeof(avx_udp_header_t), hdr->payload_len);
                     if (dest_offset + hdr->payload_len > assembled_bytes) {
                         assembled_bytes = dest_offset + hdr->payload_len;
                     }
@@ -797,11 +784,11 @@ int avx_udp_recv_frame(avx_socket_t sock, void *out_buf, size_t out_max,
 typedef struct {
     uint32_t frame_seq;
     uint32_t fourcc;
-    int64_t  timecode;
+    int64_t timecode;
     uint16_t frag_count;
-    size_t   payload_len;
+    size_t payload_len;
     uint8_t *payload;
-    bool     valid;
+    bool valid;
 } avx_udp_cached_frame_t;
 
 struct avx_udp_rudp_sender_t {
@@ -809,7 +796,7 @@ struct avx_udp_rudp_sender_t {
     avx_mutex_t lock;
     int max_cached;
     int head_idx;
-    avx_udp_cached_frame_t* cache;
+    avx_udp_cached_frame_t *cache;
     avx_fec_config_t fec_cfg;
     avx_crypto_ctx_t crypto;
 
@@ -823,7 +810,7 @@ struct avx_udp_rudp_sender_t {
     uint64_t packets_lost;
 };
 
-int avx_udp_rudp_sender_set_passphrase(avx_udp_rudp_sender_t* s, const char *passphrase, const char *stream_name) {
+int avx_udp_rudp_sender_set_passphrase(avx_udp_rudp_sender_t *s, const char *passphrase, const char *stream_name) {
     if (!s) return -1;
     avx_mutex_lock(&s->lock);
     int ret = avx_crypto_init(&s->crypto, passphrase, stream_name);
@@ -831,7 +818,7 @@ int avx_udp_rudp_sender_set_passphrase(avx_udp_rudp_sender_t* s, const char *pas
     return ret;
 }
 
-void avx_udp_rudp_sender_set_fec(avx_udp_rudp_sender_t* s, const avx_fec_config_t* cfg) {
+void avx_udp_rudp_sender_set_fec(avx_udp_rudp_sender_t *s, const avx_fec_config_t *cfg) {
     if (!s) return;
     avx_mutex_lock(&s->lock);
     if (cfg) {
@@ -845,12 +832,12 @@ void avx_udp_rudp_sender_set_fec(avx_udp_rudp_sender_t* s, const avx_fec_config_
     avx_mutex_unlock(&s->lock);
 }
 
-avx_udp_rudp_sender_t* avx_udp_rudp_sender_create(avx_socket_t sock, int max_cached_frames) {
+avx_udp_rudp_sender_t *avx_udp_rudp_sender_create(avx_socket_t sock, int max_cached_frames) {
     if (sock == AVX_INVALID_SOCKET) return NULL;
     if (max_cached_frames <= 0) max_cached_frames = 16;
     if (max_cached_frames > 128) max_cached_frames = 128;
 
-    avx_udp_rudp_sender_t* s = (avx_udp_rudp_sender_t*)calloc(1, sizeof(avx_udp_rudp_sender_t));
+    avx_udp_rudp_sender_t *s = (avx_udp_rudp_sender_t *)calloc(1, sizeof(avx_udp_rudp_sender_t));
     if (!s) return NULL;
 
     s->sock = sock;
@@ -864,7 +851,7 @@ avx_udp_rudp_sender_t* avx_udp_rudp_sender_create(avx_socket_t sock, int max_cac
     s->fec_cfg.enable_row_fec = false;
     avx_mutex_init(&s->lock);
 
-    s->cache = (avx_udp_cached_frame_t*)calloc((size_t)s->max_cached, sizeof(avx_udp_cached_frame_t));
+    s->cache = (avx_udp_cached_frame_t *)calloc((size_t)s->max_cached, sizeof(avx_udp_cached_frame_t));
     if (!s->cache) {
         avx_mutex_destroy(&s->lock);
         free(s);
@@ -873,7 +860,7 @@ avx_udp_rudp_sender_t* avx_udp_rudp_sender_create(avx_socket_t sock, int max_cac
     return s;
 }
 
-void avx_udp_rudp_sender_destroy(avx_udp_rudp_sender_t* s) {
+void avx_udp_rudp_sender_destroy(avx_udp_rudp_sender_t *s) {
     if (!s) return;
     avx_mutex_lock(&s->lock);
     if (s->cache) {
@@ -896,7 +883,7 @@ void avx_udp_rudp_sender_destroy(avx_udp_rudp_sender_t* s) {
  * Ingests receiver ACK/NACK feedback non-blockingly. Updates smoothed RTT
  * via Jacobson/Karels filter and retransmits lost packets from frame cache.
  */
-int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
+int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t *s) {
     if (!s || s->sock == AVX_INVALID_SOCKET) return -1;
 
     int retransmitted_total = 0;
@@ -904,7 +891,7 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
     uint32_t udp_magic = (prof && prof->magic_udp) ? prof->magic_udp : OAVX_UDP_MAGIC;
 
     while (1) {
-        avx_pollfd_t pfd = { .fd = s->sock, .events = POLLIN, .revents = 0 };
+        avx_pollfd_t pfd = {.fd = s->sock, .events = POLLIN, .revents = 0};
         int pr = avx_poll(&pfd, 1, 0); /* Non-blocking poll */
         if (pr <= 0 || !(pfd.revents & POLLIN)) {
             break;
@@ -915,8 +902,7 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
         socklen_t from_len = sizeof(from_addr);
         memset(&from_addr, 0, sizeof(from_addr));
 
-        ssize_t n = recvfrom(s->sock, (char*)nack_buf, sizeof(nack_buf), 0,
-                             (struct sockaddr*)&from_addr, &from_len);
+        ssize_t n = recvfrom(s->sock, (char *)nack_buf, sizeof(nack_buf), 0, (struct sockaddr *)&from_addr, &from_len);
         if (n <= 0) {
             break;
         }
@@ -929,7 +915,7 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
 
         if (pkt_magic == AVX_UDP_ACK_MAGIC) {
             if (n >= (ssize_t)sizeof(avx_udp_feedback_t)) {
-                const avx_udp_feedback_t *fb = (const avx_udp_feedback_t*)nack_buf;
+                const avx_udp_feedback_t *fb = (const avx_udp_feedback_t *)nack_buf;
                 avx_mutex_lock(&s->lock);
                 s->packets_recv++;
                 if (fb->echo_ts_ms > 0) {
@@ -958,7 +944,7 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
             continue;
         }
 
-        avx_udp_nack_t *nack = (avx_udp_nack_t*)nack_buf;
+        avx_udp_nack_t *nack = (avx_udp_nack_t *)nack_buf;
         avx_mutex_lock(&s->lock);
         s->packets_recv++;
         if (nack->echo_ts_ms > 0) {
@@ -979,7 +965,7 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
             }
         }
 
-        const avx_udp_cached_frame_t* found = NULL;
+        const avx_udp_cached_frame_t *found = NULL;
         for (int i = 0; i < s->max_cached; ++i) {
             if (s->cache[i].valid && s->cache[i].frame_seq == nack->frame_seq) {
                 found = &s->cache[i];
@@ -1022,9 +1008,8 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
                 if (s->crypto.enabled) {
                     hdr.reserved |= AVX_UDP_FLAG_ENCRYPTED;
                     size_t enc_len = sizeof(packet_buf) - sizeof(hdr);
-                    if (avx_crypto_encrypt_payload(&s->crypto, hdr.frame_seq, hdr.frag_idx, hdr.frag_count,
-                                                   &hdr, sizeof(hdr),
-                                                   found->payload + offset, chunk_len,
+                    if (avx_crypto_encrypt_payload(&s->crypto, hdr.frame_seq, hdr.frag_idx, hdr.frag_count, &hdr,
+                                                   sizeof(hdr), found->payload + offset, chunk_len,
                                                    packet_buf + sizeof(hdr), &enc_len) == 0) {
                         memcpy(packet_buf, &hdr, sizeof(hdr));
                         packet_len = sizeof(hdr) + enc_len;
@@ -1038,8 +1023,8 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
                 }
 
                 if (packet_len > 0) {
-                    ssize_t sent = sendto(s->sock, (const char*)packet_buf, packet_len, 0,
-                                          (const struct sockaddr*)&from_addr, from_len);
+                    ssize_t sent = sendto(s->sock, (const char *)packet_buf, packet_len, 0,
+                                          (const struct sockaddr *)&from_addr, from_len);
                     if (sent > 0) {
                         retransmitted_total++;
                         s->packets_retransmitted++;
@@ -1057,10 +1042,8 @@ int avx_udp_rudp_sender_service_nacks(avx_udp_rudp_sender_t* s) {
  * Emits video/audio frame over UDP: services pending NACKs, caches frame into
  * retransmission ring, fragments into MTU datagrams, and generates 2D FEC parity.
  */
-int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
-                            uint32_t frame_seq, uint32_t fourcc, int64_t timecode,
-                            const void *payload, size_t payload_len)
-{
+int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t *s, const void *dest, uint32_t frame_seq, uint32_t fourcc,
+                            int64_t timecode, const void *payload, size_t payload_len) {
     if (!s || s->sock == AVX_INVALID_SOCKET || !dest || (!payload && payload_len > 0)) return -1;
 
     uint16_t frag_count = 0;
@@ -1076,8 +1059,8 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
     int slot = s->head_idx;
     s->head_idx = (s->head_idx + 1) % s->max_cached;
 
-    avx_udp_cached_frame_t* c = &s->cache[slot];
-    uint8_t* nb = (uint8_t*)realloc(c->payload, payload_len > 0 ? payload_len : 1);
+    avx_udp_cached_frame_t *c = &s->cache[slot];
+    uint8_t *nb = (uint8_t *)realloc(c->payload, payload_len > 0 ? payload_len : 1);
     if (nb) {
         c->payload = nb;
         if (payload && payload_len > 0) {
@@ -1096,8 +1079,8 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
 
     /* 3. Send out datagram bursts with timestamp and SRTT */
     uint16_t send_ts = (uint16_t)(avx_time_ms() & 0xFFFF);
-    int ret = avx_udp_send_frame_internal(s->sock, dest, frame_seq, fourcc, timecode, payload, payload_len,
-                                          send_ts, cur_srtt, s->crypto.enabled ? &s->crypto : NULL);
+    int ret = avx_udp_send_frame_internal(s->sock, dest, frame_seq, fourcc, timecode, payload, payload_len, send_ts,
+                                          cur_srtt, s->crypto.enabled ? &s->crypto : NULL);
     if (ret == 0) {
         avx_mutex_lock(&s->lock);
         s->packets_sent += frag_count;
@@ -1129,7 +1112,7 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                         size_t offset = (size_t)global_frag * AVX_UDP_MAX_FRAG_SIZE;
                         size_t chunk_len = (offset < payload_len) ? (payload_len - offset) : 0;
                         if (chunk_len > AVX_UDP_MAX_FRAG_SIZE) chunk_len = AVX_UDP_MAX_FRAG_SIZE;
-                        media_slices[k].data = (uint8_t*)payload + offset;
+                        media_slices[k].data = (uint8_t *)payload + offset;
                         media_slices[k].len = chunk_len;
                     }
 
@@ -1149,16 +1132,17 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                         }
                     }
 
-                    if (avx_fec_generate_block(media_slices, block_frags, D, L, fec_cfg.enable_row_fec,
-                                               col_slices, fec_cfg.enable_row_fec ? row_slices : NULL) == 0) {
+                    if (avx_fec_generate_block(media_slices, block_frags, D, L, fec_cfg.enable_row_fec, col_slices,
+                                               fec_cfg.enable_row_fec ? row_slices : NULL) == 0) {
                         uint16_t last_frag_len = (uint16_t)media_slices[block_frags - 1].len;
-                        uint8_t fec_pkt[sizeof(avx_udp_header_t) + sizeof(avx_fec_wire_header_t) + AVX_UDP_MAX_FRAG_SIZE + AVX_CRYPTO_OVERHEAD];
+                        uint8_t fec_pkt[sizeof(avx_udp_header_t) + sizeof(avx_fec_wire_header_t) +
+                                        AVX_UDP_MAX_FRAG_SIZE + AVX_CRYPTO_OVERHEAD];
 
                         /* Transmit Column Parity Packets ('FEC1') */
                         for (uint16_t j = 0; j < D; ++j) {
                             if (col_slices[j].len == 0) continue;
 
-                            avx_udp_header_t *udp_hdr = (avx_udp_header_t*)fec_pkt;
+                            avx_udp_header_t *udp_hdr = (avx_udp_header_t *)fec_pkt;
                             udp_hdr->magic = udp_magic;
                             udp_hdr->frame_seq = frame_seq;
                             udp_hdr->frag_idx = j;
@@ -1190,9 +1174,8 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                             if (s->crypto.enabled) {
                                 udp_hdr->reserved |= AVX_UDP_FLAG_ENCRYPTED;
                                 size_t enc_len = sizeof(fec_pkt) - sizeof(avx_udp_header_t);
-                                if (avx_crypto_encrypt_payload(&s->crypto, frame_seq, j, frag_count,
-                                                               udp_hdr, sizeof(avx_udp_header_t),
-                                                               raw_fec, raw_fec_len,
+                                if (avx_crypto_encrypt_payload(&s->crypto, frame_seq, j, frag_count, udp_hdr,
+                                                               sizeof(avx_udp_header_t), raw_fec, raw_fec_len,
                                                                fec_pkt + sizeof(avx_udp_header_t), &enc_len) == 0) {
                                     send_fec_len = sizeof(avx_udp_header_t) + enc_len;
                                 }
@@ -1202,7 +1185,7 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                             }
 
                             if (send_fec_len > 0) {
-                                if (sendto(s->sock, (const char*)fec_pkt, send_fec_len, 0, dest_sa, dest_len) > 0) {
+                                if (sendto(s->sock, (const char *)fec_pkt, send_fec_len, 0, dest_sa, dest_len) > 0) {
                                     avx_mutex_lock(&s->lock);
                                     s->packets_sent++;
                                     avx_mutex_unlock(&s->lock);
@@ -1215,7 +1198,7 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                             for (uint16_t i = 0; i < L; ++i) {
                                 if (row_slices[i].len == 0) continue;
 
-                                avx_udp_header_t *udp_hdr = (avx_udp_header_t*)fec_pkt;
+                                avx_udp_header_t *udp_hdr = (avx_udp_header_t *)fec_pkt;
                                 udp_hdr->magic = udp_magic;
                                 udp_hdr->frame_seq = frame_seq;
                                 udp_hdr->frag_idx = i;
@@ -1247,9 +1230,8 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                                 if (s->crypto.enabled) {
                                     udp_hdr->reserved |= AVX_UDP_FLAG_ENCRYPTED;
                                     size_t enc_len = sizeof(fec_pkt) - sizeof(avx_udp_header_t);
-                                    if (avx_crypto_encrypt_payload(&s->crypto, frame_seq, i, frag_count,
-                                                                   udp_hdr, sizeof(avx_udp_header_t),
-                                                                   raw_fec, raw_fec_len,
+                                    if (avx_crypto_encrypt_payload(&s->crypto, frame_seq, i, frag_count, udp_hdr,
+                                                                   sizeof(avx_udp_header_t), raw_fec, raw_fec_len,
                                                                    fec_pkt + sizeof(avx_udp_header_t), &enc_len) == 0) {
                                         send_fec_len = sizeof(avx_udp_header_t) + enc_len;
                                     }
@@ -1259,7 +1241,8 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
                                 }
 
                                 if (send_fec_len > 0) {
-                                    if (sendto(s->sock, (const char*)fec_pkt, send_fec_len, 0, dest_sa, dest_len) > 0) {
+                                    if (sendto(s->sock, (const char *)fec_pkt, send_fec_len, 0, dest_sa, dest_len) >
+                                        0) {
                                         avx_mutex_lock(&s->lock);
                                         s->packets_sent++;
                                         avx_mutex_unlock(&s->lock);
@@ -1279,10 +1262,10 @@ int avx_udp_rudp_send_frame(avx_udp_rudp_sender_t* s, const void *dest,
     return ret;
 }
 
-#define AVX_RUDP_RX_SLOTS        64
-#define AVX_RUDP_MAX_RETRIES      8
+#define AVX_RUDP_RX_SLOTS 64
+#define AVX_RUDP_MAX_RETRIES 8
 #define AVX_RUDP_NACK_COOLDOWN_NS 20000000LL /* 20 ms minimum floor */
-#define AVX_RUDP_REORDER_GRACE_NS  3000000LL /* 3 ms minimum floor */
+#define AVX_RUDP_REORDER_GRACE_NS 3000000LL  /* 3 ms minimum floor */
 
 typedef struct {
     uint16_t matrix_d;
@@ -1290,10 +1273,10 @@ typedef struct {
     uint16_t base_frag_idx;
     uint16_t block_frags;
     uint16_t last_frag_len;
-    bool     col_present[AVX_FEC_MAX_COLS];
+    bool col_present[AVX_FEC_MAX_COLS];
     uint16_t col_len[AVX_FEC_MAX_COLS];
     uint8_t *col_parity[AVX_FEC_MAX_COLS];
-    bool     row_present[AVX_FEC_MAX_ROWS];
+    bool row_present[AVX_FEC_MAX_ROWS];
     uint16_t row_len[AVX_FEC_MAX_ROWS];
     uint8_t *row_parity[AVX_FEC_MAX_ROWS];
 } avx_rudp_fec_block_t;
@@ -1303,48 +1286,82 @@ typedef struct {
     avx_rudp_fec_block_t *blocks;
 } avx_rudp_fec_frame_t;
 
+#define AVX_RUDP_INLINE_FRAGS 512
+
 typedef struct {
-    bool     active;
-    bool     completed;
+    bool active;
+    bool completed;
     uint32_t frame_seq;
     uint32_t fourcc;
-    int64_t  timecode;
+    int64_t timecode;
     uint16_t total_frags;
     uint16_t received_frags;
     uint16_t highest_frag_seen;
-    uint8_t  received_bitmap[AVX_UDP_MAX_FRAGS / 8];
-    uint8_t  nack_retries[AVX_UDP_MAX_FRAGS];
-    int64_t  first_rx_ns;
-    int64_t  last_frag_ns;
-    int64_t  last_nack_ns;
+    uint8_t inline_bitmap[AVX_RUDP_INLINE_FRAGS / 8];
+    uint8_t inline_retries[AVX_RUDP_INLINE_FRAGS];
+    uint8_t *received_bitmap;
+    uint8_t *nack_retries;
+    uint32_t ext_frag_cap;
+    uint8_t *ext_bitmap;
+    uint8_t *ext_retries;
+    int64_t first_rx_ns;
+    int64_t last_frag_ns;
+    int64_t last_nack_ns;
     uint8_t *buf;
-    size_t   buf_cap;
-    size_t   assembled_bytes;
+    size_t buf_cap;
+    size_t assembled_bytes;
     avx_rudp_fec_frame_t *fec;
 } avx_rudp_rx_slot_t;
 
+static bool rudp_rx_slot_prepare_frags(avx_rudp_rx_slot_t *s, uint16_t total_frags) {
+    if (!s || total_frags == 0) return false;
+    if (total_frags <= AVX_RUDP_INLINE_FRAGS) {
+        s->received_bitmap = s->inline_bitmap;
+        s->nack_retries = s->inline_retries;
+        memset(s->inline_bitmap, 0, sizeof(s->inline_bitmap));
+        memset(s->inline_retries, 0, sizeof(s->inline_retries));
+        return true;
+    }
+    if (s->ext_frag_cap < (uint32_t)total_frags) {
+        uint32_t new_cap = (uint32_t)total_frags;
+        size_t bm_bytes = ((size_t)new_cap + 7u) / 8u;
+        uint8_t *nb = (uint8_t *)realloc(s->ext_bitmap, bm_bytes);
+        if (!nb) return false;
+        s->ext_bitmap = nb;
+        uint8_t *nr = (uint8_t *)realloc(s->ext_retries, (size_t)new_cap);
+        if (!nr) return false;
+        s->ext_retries = nr;
+        s->ext_frag_cap = new_cap;
+    }
+    s->received_bitmap = s->ext_bitmap;
+    s->nack_retries = s->ext_retries;
+    memset(s->received_bitmap, 0, ((size_t)total_frags + 7u) / 8u);
+    memset(s->nack_retries, 0, (size_t)total_frags);
+    return true;
+}
+
 struct avx_udp_rudp_receiver_t {
-    avx_socket_t       sock;
-    avx_mutex_t        lock;
+    avx_socket_t sock;
+    avx_mutex_t lock;
     avx_rudp_rx_slot_t slots[AVX_RUDP_RX_SLOTS];
-    bool               has_delivered[2];
-    uint32_t           delivered_head[2];
-    uint64_t           delivered_mask[2];
-    avx_fec_config_t   fec_cfg;
-    avx_crypto_ctx_t   crypto;
+    bool has_delivered[2];
+    uint32_t delivered_head[2];
+    uint64_t delivered_mask[2];
+    avx_fec_config_t fec_cfg;
+    avx_crypto_ctx_t crypto;
 
     /* WAN RTT, Jitter and Telemetry State */
-    uint16_t           latest_sender_ts_ms;
-    int64_t            latest_sender_rx_ns;
-    uint32_t           srtt_ms;
-    uint32_t           rttvar_ms;
-    int64_t            last_feedback_ns;
-    uint64_t           packets_recv;
-    uint64_t           packets_recovered;
-    uint64_t           packets_lost;
+    uint16_t latest_sender_ts_ms;
+    int64_t latest_sender_rx_ns;
+    uint32_t srtt_ms;
+    uint32_t rttvar_ms;
+    int64_t last_feedback_ns;
+    uint64_t packets_recv;
+    uint64_t packets_recovered;
+    uint64_t packets_lost;
 };
 
-int avx_udp_rudp_receiver_set_passphrase(avx_udp_rudp_receiver_t* r, const char *passphrase, const char *stream_name) {
+int avx_udp_rudp_receiver_set_passphrase(avx_udp_rudp_receiver_t *r, const char *passphrase, const char *stream_name) {
     if (!r) return -1;
     avx_mutex_lock(&r->lock);
     int ret = avx_crypto_init(&r->crypto, passphrase, stream_name);
@@ -1381,22 +1398,30 @@ static void rudp_rx_slot_free_fec(avx_rudp_rx_slot_t *s) {
  * Reconstructs lost media packets using 2D matrix XOR erasure decoding
  * (column/row parity) before resorting to network NACK retransmissions.
  */
-static void rudp_try_fec_reconstruct(avx_udp_rudp_receiver_t* r, avx_rudp_rx_slot_t* s) {
+static void rudp_try_fec_reconstruct(avx_udp_rudp_receiver_t *r, avx_rudp_rx_slot_t *s) {
     if (!r || !s || !s->active || s->completed || !s->fec || !s->buf) return;
 
     for (int b = 0; b < s->fec->num_blocks; ++b) {
         avx_rudp_fec_block_t *block = &s->fec->blocks[b];
-        if (block->block_frags == 0 || block->matrix_d == 0 || block->matrix_l == 0) continue;
+        if (block->block_frags == 0 || block->block_frags > AVX_FEC_MAX_BLOCK_FRAGS || block->matrix_d == 0 ||
+            block->matrix_l == 0)
+            continue;
 
+        bool out_of_bounds = false;
         int missing_in_block = 0;
         for (uint16_t k = 0; k < block->block_frags; ++k) {
             uint16_t f = (uint16_t)(block->base_frag_idx + k);
             if (f >= s->total_frags) break;
+            size_t frag_end = ((size_t)f + 1u) * AVX_UDP_MAX_FRAG_SIZE;
+            if (frag_end > s->buf_cap) {
+                out_of_bounds = true;
+                break;
+            }
             if (!(s->received_bitmap[f / 8] & (1 << (f % 8)))) {
                 missing_in_block++;
             }
         }
-        if (missing_in_block == 0) continue;
+        if (out_of_bounds || missing_in_block == 0) continue;
 
         avx_fec_slice_t media_slices[AVX_FEC_MAX_BLOCK_FRAGS];
         bool is_present[AVX_FEC_MAX_BLOCK_FRAGS];
@@ -1431,17 +1456,9 @@ static void rudp_try_fec_reconstruct(avx_udp_rudp_receiver_t* r, avx_rudp_rx_slo
             row_slices[i].len = block->row_present[i] ? block->row_len[i] : 0;
         }
 
-        int recovered = avx_fec_reconstruct_block(
-            media_slices,
-            is_present,
-            block->block_frags,
-            block->matrix_d,
-            block->matrix_l,
-            col_slices,
-            block->col_present,
-            row_slices,
-            block->row_present
-        );
+        int recovered =
+            avx_fec_reconstruct_block(media_slices, is_present, block->block_frags, block->matrix_d, block->matrix_l,
+                                      col_slices, block->col_present, row_slices, block->row_present);
 
         if (recovered > 0) {
             for (uint16_t k = 0; k < block->block_frags; ++k) {
@@ -1471,7 +1488,7 @@ static void rudp_try_fec_reconstruct(avx_udp_rudp_receiver_t* r, avx_rudp_rx_slo
     }
 }
 
-void avx_udp_rudp_receiver_set_fec(avx_udp_rudp_receiver_t* r, const avx_fec_config_t* cfg) {
+void avx_udp_rudp_receiver_set_fec(avx_udp_rudp_receiver_t *r, const avx_fec_config_t *cfg) {
     if (!r) return;
     avx_mutex_lock(&r->lock);
     if (cfg) {
@@ -1485,9 +1502,9 @@ void avx_udp_rudp_receiver_set_fec(avx_udp_rudp_receiver_t* r, const avx_fec_con
     avx_mutex_unlock(&r->lock);
 }
 
-avx_udp_rudp_receiver_t* avx_udp_rudp_receiver_create(avx_socket_t sock) {
+avx_udp_rudp_receiver_t *avx_udp_rudp_receiver_create(avx_socket_t sock) {
     if (sock == AVX_INVALID_SOCKET) return NULL;
-    avx_udp_rudp_receiver_t* r = (avx_udp_rudp_receiver_t*)calloc(1, sizeof(avx_udp_rudp_receiver_t));
+    avx_udp_rudp_receiver_t *r = (avx_udp_rudp_receiver_t *)calloc(1, sizeof(avx_udp_rudp_receiver_t));
     if (!r) return NULL;
     r->sock = sock;
     r->srtt_ms = 20;
@@ -1500,7 +1517,7 @@ avx_udp_rudp_receiver_t* avx_udp_rudp_receiver_create(avx_socket_t sock) {
     return r;
 }
 
-void avx_udp_rudp_receiver_destroy(avx_udp_rudp_receiver_t* r) {
+void avx_udp_rudp_receiver_destroy(avx_udp_rudp_receiver_t *r) {
     if (!r) return;
     avx_mutex_lock(&r->lock);
     for (int i = 0; i < AVX_RUDP_RX_SLOTS; ++i) {
@@ -1510,6 +1527,17 @@ void avx_udp_rudp_receiver_destroy(avx_udp_rudp_receiver_t* r) {
             r->slots[i].buf = NULL;
             r->slots[i].buf_cap = 0;
         }
+        if (r->slots[i].ext_bitmap) {
+            free(r->slots[i].ext_bitmap);
+            r->slots[i].ext_bitmap = NULL;
+        }
+        if (r->slots[i].ext_retries) {
+            free(r->slots[i].ext_retries);
+            r->slots[i].ext_retries = NULL;
+        }
+        r->slots[i].ext_frag_cap = 0;
+        r->slots[i].received_bitmap = NULL;
+        r->slots[i].nack_retries = NULL;
     }
     avx_crypto_wipe(&r->crypto);
     avx_mutex_unlock(&r->lock);
@@ -1522,8 +1550,8 @@ static bool rudp_seq_is_newer(uint32_t a, uint32_t b) {
     return diff != 0 && (diff & 0x40000000u) == 0;
 }
 
-static void rudp_trigger_nack_slot(avx_udp_rudp_receiver_t* r, avx_rudp_rx_slot_t* s,
-                                   const void *sender_addr, bool scan_to_end) {
+static void rudp_trigger_nack_slot(avx_udp_rudp_receiver_t *r, avx_rudp_rx_slot_t *s, const void *sender_addr,
+                                   bool scan_to_end) {
     if (!r || !s || !sender_addr || s->total_frags == 0 || s->completed) return;
 
     struct sockaddr_storage prepared;
@@ -1556,9 +1584,10 @@ static void rudp_trigger_nack_slot(avx_udp_rudp_receiver_t* r, avx_rudp_rx_slot_
         nack.rx_delay_ms = 0;
     }
 
-    uint16_t scan_limit = scan_to_end
-        ? s->total_frags
-        : ((s->highest_frag_seen + 1 < s->total_frags) ? (uint16_t)(s->highest_frag_seen + 1) : s->total_frags);
+    uint16_t scan_limit =
+        scan_to_end
+            ? s->total_frags
+            : ((s->highest_frag_seen + 1 < s->total_frags) ? (uint16_t)(s->highest_frag_seen + 1) : s->total_frags);
 
     for (uint16_t f = 0; f < scan_limit && nack.range_count < AVX_UDP_NACK_MAX_RANGES; ++f) {
         int byte_idx = f / 8;
@@ -1584,12 +1613,12 @@ static void rudp_trigger_nack_slot(avx_udp_rudp_receiver_t* r, avx_rudp_rx_slot_
     }
 
     if (nack.range_count > 0) {
-        sendto(r->sock, (const char*)&nack, sizeof(nack), 0, dest_sa, dest_len);
+        sendto(r->sock, (const char *)&nack, sizeof(nack), 0, dest_sa, dest_len);
         s->last_nack_ns = now_ns;
     }
 }
 
-static void rudp_service_nacks(avx_udp_rudp_receiver_t* r, const void *sender_addr, bool poll_idle) {
+static void rudp_service_nacks(avx_udp_rudp_receiver_t *r, const void *sender_addr, bool poll_idle) {
     if (!r || !sender_addr) return;
     int64_t now_ns = avx_time_ns();
 
@@ -1601,8 +1630,8 @@ static void rudp_service_nacks(avx_udp_rudp_receiver_t* r, const void *sender_ad
         if (grace_ns > 30000000LL) grace_ns = 30000000LL;
     }
 
-    bool has_newest[2] = { false, false };
-    uint32_t newest_seq[2] = { 0, 0 };
+    bool has_newest[2] = {false, false};
+    uint32_t newest_seq[2] = {0, 0};
     for (int i = 0; i < AVX_RUDP_RX_SLOTS; ++i) {
         avx_rudp_rx_slot_t *s = &r->slots[i];
         if (!s->active) continue;
@@ -1631,13 +1660,13 @@ static void rudp_service_nacks(avx_udp_rudp_receiver_t* r, const void *sender_ad
         bool newer_arrived = has_newest[chan] && rudp_seq_is_newer(newest_seq[chan], seq_num);
 
         uint16_t seen_window = (uint16_t)(s->highest_frag_seen + 1);
-        uint16_t missing_in_window = (seen_window > s->received_frags) ? (uint16_t)(seen_window - s->received_frags) : 0;
+        uint16_t missing_in_window =
+            (seen_window > s->received_frags) ? (uint16_t)(seen_window - s->received_frags) : 0;
 
         if (missing_in_window == 0 && !newer_arrived && !poll_idle) {
             continue;
         }
-        if (!poll_idle && !newer_arrived && missing_in_window <= 2 &&
-            (now_ns - s->last_frag_ns) < grace_ns) {
+        if (!poll_idle && !newer_arrived && missing_in_window <= 2 && (now_ns - s->last_frag_ns) < grace_ns) {
             continue;
         }
 
@@ -1667,13 +1696,13 @@ static void rudp_service_nacks(avx_udp_rudp_receiver_t* r, const void *sender_ad
             fb.lost_packets = (uint32_t)r->packets_lost;
             fb.rtt_ms = (uint16_t)r->srtt_ms;
             fb.jitter_ms = (uint16_t)r->rttvar_ms;
-            sendto(r->sock, (const char*)&fb, sizeof(fb), 0, dest_sa, dest_len);
+            sendto(r->sock, (const char *)&fb, sizeof(fb), 0, dest_sa, dest_len);
             r->last_feedback_ns = now_ns;
         }
     }
 }
 
-static void rudp_mark_delivered(avx_udp_rudp_receiver_t* r, int chan, uint32_t seq_num) {
+static void rudp_mark_delivered(avx_udp_rudp_receiver_t *r, int chan, uint32_t seq_num) {
     if (!r->has_delivered[chan]) {
         r->has_delivered[chan] = true;
         r->delivered_head[chan] = seq_num;
@@ -1690,15 +1719,15 @@ static void rudp_mark_delivered(avx_udp_rudp_receiver_t* r, int chan, uint32_t s
     }
 }
 
-static bool rudp_was_recently_delivered(const avx_udp_rudp_receiver_t* r, int chan, uint32_t seq_num) {
+static bool rudp_was_recently_delivered(const avx_udp_rudp_receiver_t *r, int chan, uint32_t seq_num) {
     if (!r->has_delivered[chan]) return false;
     if (rudp_seq_is_newer(seq_num, r->delivered_head[chan])) return false;
     uint32_t back = (r->delivered_head[chan] - seq_num) & 0x7FFFFFFFu;
     return (back < 64u) && ((r->delivered_mask[chan] & (1ULL << back)) != 0ULL);
 }
 
-static bool rudp_deliver_ready_slot(avx_udp_rudp_receiver_t* r, void *out_buf, size_t out_max,
-                                    size_t *out_size, uint32_t *out_fourcc, int64_t *out_timecode) {
+static bool rudp_deliver_ready_slot(avx_udp_rudp_receiver_t *r, void *out_buf, size_t out_max, size_t *out_size,
+                                    uint32_t *out_fourcc, int64_t *out_timecode) {
     int best_idx = -1;
     for (int i = 0; i < AVX_RUDP_RX_SLOTS; ++i) {
         if (!r->slots[i].active || !r->slots[i].completed) continue;
@@ -1726,9 +1755,8 @@ static bool rudp_deliver_ready_slot(avx_udp_rudp_receiver_t* r, void *out_buf, s
     return true;
 }
 
-static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_header_t *hdr,
-                                    const uint8_t *pkt, size_t pkt_len, size_t out_max,
-                                    int64_t now_ns) {
+static void rudp_process_fec_packet(avx_udp_rudp_receiver_t *r, const avx_udp_header_t *hdr, const uint8_t *pkt,
+                                    size_t pkt_len, size_t out_max, int64_t now_ns) {
     if (!r->fec_cfg.enabled) return;
 
     bool is_encrypted = (hdr->reserved & AVX_UDP_FLAG_ENCRYPTED) != 0;
@@ -1745,11 +1773,9 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
             return;
         }
         size_t dec_len = sizeof(fec_dec_buf);
-        if (avx_crypto_decrypt_payload(&r->crypto, hdr->frame_seq, hdr->frag_idx, hdr->frag_count,
-                                       hdr, sizeof(*hdr),
-                                       pkt + sizeof(avx_udp_header_t),
-                                       pkt_len - sizeof(avx_udp_header_t),
-                                       fec_dec_buf, &dec_len) != 0 ||
+        if (avx_crypto_decrypt_payload(&r->crypto, hdr->frame_seq, hdr->frag_idx, hdr->frag_count, hdr, sizeof(*hdr),
+                                       pkt + sizeof(avx_udp_header_t), pkt_len - sizeof(avx_udp_header_t), fec_dec_buf,
+                                       &dec_len) != 0 ||
             dec_len < sizeof(avx_fec_wire_header_t)) {
             return;
         }
@@ -1767,10 +1793,9 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
         }
     }
 
-    if (fec_hdr.matrix_d == 0 || fec_hdr.matrix_d > AVX_FEC_MAX_COLS ||
-        fec_hdr.matrix_l == 0 || fec_hdr.matrix_l > AVX_FEC_MAX_ROWS ||
-        fec_hdr.block_frags == 0 || fec_hdr.block_frags > AVX_FEC_MAX_BLOCK_FRAGS ||
-        fec_hdr.base_frag_idx >= AVX_UDP_MAX_FRAGS ||
+    if (fec_hdr.matrix_d == 0 || fec_hdr.matrix_d > AVX_FEC_MAX_COLS || fec_hdr.matrix_l == 0 ||
+        fec_hdr.matrix_l > AVX_FEC_MAX_ROWS || fec_hdr.block_frags == 0 ||
+        fec_hdr.block_frags > AVX_FEC_MAX_BLOCK_FRAGS || fec_hdr.base_frag_idx >= AVX_UDP_MAX_FRAGS ||
         fec_hdr.parity_len == 0 || fec_hdr.parity_len > AVX_UDP_MAX_FRAG_SIZE) {
         return;
     }
@@ -1802,8 +1827,7 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
         if (!r->slots[i].active && free_idx < 0) {
             free_idx = i;
         } else if (r->slots[i].active && !r->slots[i].completed) {
-            if (oldest_incomplete_idx < 0 ||
-                r->slots[i].first_rx_ns < r->slots[oldest_incomplete_idx].first_rx_ns) {
+            if (oldest_incomplete_idx < 0 || r->slots[i].first_rx_ns < r->slots[oldest_incomplete_idx].first_rx_ns) {
                 oldest_incomplete_idx = i;
             }
         }
@@ -1823,11 +1847,12 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
         if (need_cap > out_max) need_cap = out_max;
 
         if (s->buf_cap < need_cap) {
-            uint8_t *nb = (uint8_t*)realloc(s->buf, need_cap);
+            uint8_t *nb = (uint8_t *)realloc(s->buf, need_cap);
             if (!nb) return;
             s->buf = nb;
             s->buf_cap = need_cap;
         }
+        if (!rudp_rx_slot_prepare_frags(s, hdr->frag_count)) return;
 
         s->active = true;
         s->completed = false;
@@ -1842,8 +1867,6 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
         s->last_nack_ns = 0;
         s->assembled_bytes = 0;
         s->fec = NULL;
-        memset(s->received_bitmap, 0, sizeof(s->received_bitmap));
-        memset(s->nack_retries, 0, sizeof(s->nack_retries));
     }
 
     if (s->completed) return;
@@ -1852,14 +1875,15 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
     }
 
     if (!s->fec) {
-        s->fec = (avx_rudp_fec_frame_t*)calloc(1, sizeof(avx_rudp_fec_frame_t));
+        s->fec = (avx_rudp_fec_frame_t *)calloc(1, sizeof(avx_rudp_fec_frame_t));
     }
     if (!s->fec) return;
 
     if (fec_hdr.block_idx >= s->fec->num_blocks) {
         int old_n = s->fec->num_blocks;
         int new_n = fec_hdr.block_idx + 1;
-        avx_rudp_fec_block_t *nb = (avx_rudp_fec_block_t*)realloc(s->fec->blocks, (size_t)new_n * sizeof(avx_rudp_fec_block_t));
+        avx_rudp_fec_block_t *nb =
+            (avx_rudp_fec_block_t *)realloc(s->fec->blocks, (size_t)new_n * sizeof(avx_rudp_fec_block_t));
         if (!nb) return;
         memset(nb + old_n, 0, (size_t)(new_n - old_n) * sizeof(avx_rudp_fec_block_t));
         s->fec->blocks = nb;
@@ -1877,7 +1901,7 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
         uint16_t j = fec_hdr.parity_idx;
         if (j < fec_hdr.matrix_d) {
             if (!block->col_parity[j]) {
-                block->col_parity[j] = (uint8_t*)malloc(AVX_UDP_MAX_FRAG_SIZE);
+                block->col_parity[j] = (uint8_t *)malloc(AVX_UDP_MAX_FRAG_SIZE);
             }
             if (block->col_parity[j]) {
                 memcpy(block->col_parity[j], payload_ptr, fec_hdr.parity_len);
@@ -1889,7 +1913,7 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
         uint16_t i = fec_hdr.parity_idx;
         if (i < fec_hdr.matrix_l) {
             if (!block->row_parity[i]) {
-                block->row_parity[i] = (uint8_t*)malloc(AVX_UDP_MAX_FRAG_SIZE);
+                block->row_parity[i] = (uint8_t *)malloc(AVX_UDP_MAX_FRAG_SIZE);
             }
             if (block->row_parity[i]) {
                 memcpy(block->row_parity[i], payload_ptr, fec_hdr.parity_len);
@@ -1902,17 +1926,16 @@ static void rudp_process_fec_packet(avx_udp_rudp_receiver_t* r, const avx_udp_he
     rudp_try_fec_reconstruct(r, s);
 }
 
-static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, size_t pkt_len,
-                                size_t out_max, uint32_t expected_magic, uint32_t compat_magic,
-                                int64_t now_ns) {
+static void rudp_process_packet(avx_udp_rudp_receiver_t *r, const uint8_t *pkt, size_t pkt_len, size_t out_max,
+                                uint32_t expected_magic, uint32_t compat_magic, int64_t now_ns) {
     if (pkt_len < sizeof(avx_udp_header_t)) return;
 
     avx_udp_header_t hdr_val;
     memcpy(&hdr_val, pkt, sizeof(hdr_val));
     const avx_udp_header_t *hdr = &hdr_val;
 
-    if ((hdr->magic != expected_magic && (!compat_magic || hdr->magic != compat_magic)) ||
-        hdr->frag_count == 0 || hdr->frag_count > AVX_UDP_MAX_FRAGS) {
+    if ((hdr->magic != expected_magic && (!compat_magic || hdr->magic != compat_magic)) || hdr->frag_count == 0 ||
+        (uint32_t)hdr->frag_count > (uint32_t)AVX_UDP_MAX_FRAGS) {
         return;
     }
 
@@ -1927,8 +1950,7 @@ static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, 
         return;
     }
 
-    if (hdr->frag_idx >= hdr->frag_count ||
-        hdr->payload_len > AVX_UDP_MAX_FRAG_SIZE) {
+    if (hdr->frag_idx >= hdr->frag_count || hdr->payload_len > AVX_UDP_MAX_FRAG_SIZE) {
         return;
     }
 
@@ -1969,8 +1991,7 @@ static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, 
         if (!r->slots[i].active && free_idx < 0) {
             free_idx = i;
         } else if (r->slots[i].active && !r->slots[i].completed) {
-            if (oldest_incomplete_idx < 0 ||
-                r->slots[i].first_rx_ns < r->slots[oldest_incomplete_idx].first_rx_ns) {
+            if (oldest_incomplete_idx < 0 || r->slots[i].first_rx_ns < r->slots[oldest_incomplete_idx].first_rx_ns) {
                 oldest_incomplete_idx = i;
             }
         }
@@ -1992,11 +2013,12 @@ static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, 
         if (dest_offset + hdr->payload_len > need_cap) need_cap = dest_offset + hdr->payload_len;
 
         if (s->buf_cap < need_cap) {
-            uint8_t *nb = (uint8_t*)realloc(s->buf, need_cap);
+            uint8_t *nb = (uint8_t *)realloc(s->buf, need_cap);
             if (!nb) return;
             s->buf = nb;
             s->buf_cap = need_cap;
         }
+        if (!rudp_rx_slot_prepare_frags(s, hdr->frag_count)) return;
 
         s->active = true;
         s->completed = false;
@@ -2011,8 +2033,6 @@ static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, 
         s->last_nack_ns = 0;
         s->assembled_bytes = 0;
         s->fec = NULL;
-        memset(s->received_bitmap, 0, sizeof(s->received_bitmap));
-        memset(s->nack_retries, 0, sizeof(s->nack_retries));
     }
 
     if (s->completed || hdr->frag_idx >= s->total_frags) {
@@ -2040,11 +2060,10 @@ static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, 
 
         if (is_encrypted) {
             size_t dec_len = sizeof(dec_payload);
-            if (avx_crypto_decrypt_payload(&r->crypto, hdr->frame_seq, hdr->frag_idx, hdr->frag_count,
-                                           hdr, sizeof(*hdr),
-                                           pkt + sizeof(avx_udp_header_t),
-                                           hdr->payload_len + AVX_CRYPTO_OVERHEAD,
-                                           dec_payload, &dec_len) != 0 || dec_len != hdr->payload_len) {
+            if (avx_crypto_decrypt_payload(&r->crypto, hdr->frame_seq, hdr->frag_idx, hdr->frag_count, hdr,
+                                           sizeof(*hdr), pkt + sizeof(avx_udp_header_t),
+                                           hdr->payload_len + AVX_CRYPTO_OVERHEAD, dec_payload, &dec_len) != 0 ||
+                dec_len != hdr->payload_len) {
                 return;
             }
             plain_slice = dec_payload;
@@ -2068,11 +2087,8 @@ static void rudp_process_packet(avx_udp_rudp_receiver_t* r, const uint8_t *pkt, 
  * Ingests datagrams via recvmmsg batching, tracks missing fragments with bitmask,
  * emits selective NACKs, and reassembles completed frames in monotonic sequence order.
  */
-int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t* r, const void *sender_addr,
-                            void *out_buf, size_t out_max,
-                            size_t *out_size, uint32_t *out_fourcc, int64_t *out_timecode,
-                            int timeout_ms)
-{
+int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t *r, const void *sender_addr, void *out_buf, size_t out_max,
+                            size_t *out_size, uint32_t *out_fourcc, int64_t *out_timecode, int timeout_ms) {
     if (!r || r->sock == AVX_INVALID_SOCKET || !out_buf || !out_size || !sender_addr) return -1;
 
     avx_mutex_lock(&r->lock);
@@ -2099,7 +2115,7 @@ int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t* r, const void *sender_addr,
         int poll_timeout = (int)(deadline_ms - now_ms);
         if (poll_timeout > 5) poll_timeout = 5;
 
-        avx_pollfd_t pfd = { .fd = r->sock, .events = POLLIN, .revents = 0 };
+        avx_pollfd_t pfd = {.fd = r->sock, .events = POLLIN, .revents = 0};
         avx_mutex_unlock(&r->lock);
         int pr = avx_poll(&pfd, 1, poll_timeout);
         avx_mutex_lock(&r->lock);
@@ -2133,22 +2149,21 @@ int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t* r, const void *sender_addr,
                 avx_mutex_unlock(&r->lock);
                 return -1;
             }
-            ssize_t n = recv(r->sock, (char*)packet_bufs[0], sizeof(packet_bufs[0]), 0);
+            ssize_t n = recv(r->sock, (char *)packet_bufs[0], sizeof(packet_bufs[0]), 0);
             if (n <= 0) continue;
             num_pkts = 1;
             msgs[0].msg_len = (unsigned int)n;
         }
 
         for (int p = 0; p < num_pkts; ++p) {
-            rudp_process_packet(r, packet_bufs[p], (size_t)msgs[p].msg_len,
-                                out_max, expected_magic, compat_magic, now_ns);
+            rudp_process_packet(r, packet_bufs[p], (size_t)msgs[p].msg_len, out_max, expected_magic, compat_magic,
+                                now_ns);
         }
 #else
         uint8_t packet_buf[2048];
-        ssize_t n = recv(r->sock, (char*)packet_buf, sizeof(packet_buf), 0);
+        ssize_t n = recv(r->sock, (char *)packet_buf, sizeof(packet_buf), 0);
         if (n > 0) {
-            rudp_process_packet(r, packet_buf, (size_t)n,
-                                out_max, expected_magic, compat_magic, now_ns);
+            rudp_process_packet(r, packet_buf, (size_t)n, out_max, expected_magic, compat_magic, now_ns);
         }
 #endif
 
@@ -2160,9 +2175,9 @@ int avx_udp_rudp_recv_frame(avx_udp_rudp_receiver_t* r, const void *sender_addr,
     }
 }
 
-bool avx_udp_rudp_sender_get_telemetry(const avx_udp_rudp_sender_t* s, avx_rudp_telemetry_t* out_telem) {
+bool avx_udp_rudp_sender_get_telemetry(const avx_udp_rudp_sender_t *s, avx_rudp_telemetry_t *out_telem) {
     if (!s || !out_telem) return false;
-    avx_udp_rudp_sender_t* mut_s = (avx_udp_rudp_sender_t*)s;
+    avx_udp_rudp_sender_t *mut_s = (avx_udp_rudp_sender_t *)s;
     avx_mutex_lock(&mut_s->lock);
     out_telem->srtt_ms = s->srtt_ms;
     out_telem->rttvar_ms = s->rttvar_ms;
@@ -2175,9 +2190,9 @@ bool avx_udp_rudp_sender_get_telemetry(const avx_udp_rudp_sender_t* s, avx_rudp_
     return true;
 }
 
-bool avx_udp_rudp_receiver_get_telemetry(const avx_udp_rudp_receiver_t* r, avx_rudp_telemetry_t* out_telem) {
+bool avx_udp_rudp_receiver_get_telemetry(const avx_udp_rudp_receiver_t *r, avx_rudp_telemetry_t *out_telem) {
     if (!r || !out_telem) return false;
-    avx_udp_rudp_receiver_t* mut_r = (avx_udp_rudp_receiver_t*)r;
+    avx_udp_rudp_receiver_t *mut_r = (avx_udp_rudp_receiver_t *)r;
     avx_mutex_lock(&mut_r->lock);
     out_telem->srtt_ms = r->srtt_ms;
     out_telem->rttvar_ms = r->rttvar_ms;

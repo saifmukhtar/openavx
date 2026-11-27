@@ -12,9 +12,9 @@
 #include <stdio.h>
 #include <time.h>
 
-bool avx_socket_send_all(avx_socket_t fd, const void* buf, size_t len) {
+bool avx_socket_send_all(avx_socket_t fd, const void *buf, size_t len) {
     if (fd == AVX_INVALID_SOCKET || !buf || len == 0) return true;
-    const char* ptr = (const char*)buf;
+    const char *ptr = (const char *)buf;
     size_t remaining = len;
     while (remaining > 0) {
         ssize_t n = send(fd, ptr, remaining, MSG_NOSIGNAL);
@@ -27,12 +27,8 @@ bool avx_socket_send_all(avx_socket_t fd, const void* buf, size_t len) {
     return true;
 }
 
-bool avx_send_video_datagram(
-    avx_send_ctx_t *slot,
-    avx_client_slot_t *client,
-    const avx_tx_video_slot_t *vslot,
-    bool use_rudp)
-{
+bool avx_send_video_datagram(avx_send_ctx_t *slot, avx_client_slot_t *client, const avx_tx_video_slot_t *vslot,
+                             bool use_rudp) {
     size_t max_udp_payload = (size_t)AVX_UDP_MAX_FRAGS * (size_t)AVX_UDP_MAX_FRAG_SIZE;
     size_t total_sz = vslot->header_len + vslot->payload_size;
     if (total_sz > max_udp_payload) {
@@ -47,7 +43,7 @@ bool avx_send_video_datagram(
         memcpy(&tc, vslot->header + 24, sizeof(tc));
     }
 
-    uint8_t *bundle = (uint8_t*)malloc(total_sz);
+    uint8_t *bundle = (uint8_t *)malloc(total_sz);
     if (!bundle) return false;
 
     memcpy(bundle, vslot->header, vslot->header_len);
@@ -56,13 +52,13 @@ bool avx_send_video_datagram(
     }
 
     int rc = use_rudp
-        ? avx_udp_rudp_send_frame(slot->rudp_sender, &client->udp_dest_addr, seq, fourcc, tc, bundle, total_sz)
-        : avx_udp_send_frame(slot->udp_sock, &client->udp_dest_addr, seq, fourcc, tc, bundle, total_sz);
+                 ? avx_udp_rudp_send_frame(slot->rudp_sender, &client->udp_dest_addr, seq, fourcc, tc, bundle, total_sz)
+                 : avx_udp_send_frame(slot->udp_sock, &client->udp_dest_addr, seq, fourcc, tc, bundle, total_sz);
     free(bundle);
     return (rc == 0);
 }
 
-void avx_send_recalculate_tally_locked(avx_send_ctx_t* slot) {
+void avx_send_recalculate_tally_locked(avx_send_ctx_t *slot) {
     uint8_t aggregate_flags = OAVX_TALLY_NONE;
     for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
         if (slot->clients[i].fd != AVX_INVALID_SOCKET) {
@@ -73,12 +69,12 @@ void avx_send_recalculate_tally_locked(avx_send_ctx_t* slot) {
         slot->tally.flags = aggregate_flags;
         avx_cond_broadcast(&slot->tally_cond);
         if (slot->web_server) {
-            avx_web_server_broadcast_tally((avx_web_server_t*)slot->web_server, &slot->tally);
+            avx_web_server_broadcast_tally((avx_web_server_t *)slot->web_server, &slot->tally);
         }
     }
 }
 
-void avx_send_remove_client_locked(avx_send_ctx_t* slot, int index) {
+void avx_send_remove_client_locked(avx_send_ctx_t *slot, int index) {
     if (index < 0 || index >= AVX_MAX_CLIENTS) return;
     if (slot->clients[index].fd != AVX_INVALID_SOCKET) {
         avx_socket_t old_fd = slot->clients[index].fd;
@@ -128,8 +124,8 @@ void avx_send_remove_client_locked(avx_send_ctx_t* slot, int index) {
 }
 
 /* Background worker servicing RUDP retransmission NACKs and driving periodic rate control ticks. */
-void* avx_send_nack_service_worker(void* arg) {
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)arg;
+void *avx_send_nack_service_worker(void *arg) {
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)arg;
     if (!slot) return NULL;
     int64_t last_rc_tick_ms = 0;
     while (1) {
@@ -150,7 +146,7 @@ void* avx_send_nack_service_worker(void* arg) {
     return NULL;
 }
 
-void avx_client_queue_drain(avx_send_ctx_t* slot, avx_client_slot_t* client) {
+void avx_client_queue_drain(avx_send_ctx_t *slot, avx_client_slot_t *client) {
     if (!slot || !client) return;
     avx_queue_item_t local_items[AVX_CLIENT_QUEUE_DEPTH];
     int count = 0;
@@ -191,10 +187,10 @@ void avx_client_queue_drain(avx_send_ctx_t* slot, avx_client_slot_t* client) {
 }
 
 /* Per-client worker transmitting queued video, audio, and metadata packets across TCP/UDP/RUDP. */
-void* avx_send_client_tx_worker(void* arg) {
-    avx_client_slot_t* client = (avx_client_slot_t*)arg;
+void *avx_send_client_tx_worker(void *arg) {
+    avx_client_slot_t *client = (avx_client_slot_t *)arg;
     if (!client) return NULL;
-    avx_send_ctx_t* slot = client->parent_ctx;
+    avx_send_ctx_t *slot = client->parent_ctx;
     int c_idx = client->client_index;
 
     while (1) {
@@ -234,12 +230,12 @@ void* avx_send_client_tx_worker(void* arg) {
                             memcpy(&fourcc, item.shared_pkt->data + 12, sizeof(fourcc));
                             memcpy(&tc, item.shared_pkt->data + 24, sizeof(tc));
                         }
-                        if (avx_udp_rudp_send_frame(slot->rudp_sender, &client->udp_dest_addr,
-                                                    seq, fourcc, tc,
+                        if (avx_udp_rudp_send_frame(slot->rudp_sender, &client->udp_dest_addr, seq, fourcc, tc,
                                                     item.shared_pkt->data, item.shared_pkt->size) != 0) {
                             send_ok = false;
                         }
-                    } else if (client->transport == OAVX_TRANSPORT_UDP && slot->udp_sock != AVX_INVALID_SOCKET && client->has_udp_dest) {
+                    } else if (client->transport == OAVX_TRANSPORT_UDP && slot->udp_sock != AVX_INVALID_SOCKET &&
+                               client->has_udp_dest) {
                         uint32_t seq = ((uint32_t)client->video_packets_sent) & 0x7FFFFFFFu;
                         uint32_t fourcc = 0;
                         int64_t tc = 0;
@@ -247,8 +243,7 @@ void* avx_send_client_tx_worker(void* arg) {
                             memcpy(&fourcc, item.shared_pkt->data + 12, sizeof(fourcc));
                             memcpy(&tc, item.shared_pkt->data + 24, sizeof(tc));
                         }
-                        if (avx_udp_send_frame(slot->udp_sock, &client->udp_dest_addr,
-                                               seq, fourcc, tc,
+                        if (avx_udp_send_frame(slot->udp_sock, &client->udp_dest_addr, seq, fourcc, tc,
                                                item.shared_pkt->data, item.shared_pkt->size) != 0) {
                             send_ok = false;
                         }
@@ -263,9 +258,13 @@ void* avx_send_client_tx_worker(void* arg) {
                     int p_idx = item.video_pool_idx;
                     if (p_idx >= 0 && p_idx < AVX_TX_VIDEO_POOL_SIZE) {
                         avx_tx_video_slot_t *vslot = &slot->video_pool[p_idx];
-                        if (client->transport == OAVX_TRANSPORT_RUDP && slot->rudp_sender && client->has_udp_dest) {
+                        size_t max_udp_payload = (size_t)AVX_UDP_MAX_FRAGS * (size_t)AVX_UDP_MAX_FRAG_SIZE;
+                        bool can_udp = (vslot->header_len + vslot->payload_size <= max_udp_payload);
+                        if (can_udp && client->transport == OAVX_TRANSPORT_RUDP && slot->rudp_sender &&
+                            client->has_udp_dest) {
                             send_ok = avx_send_video_datagram(slot, client, vslot, true);
-                        } else if (client->transport == OAVX_TRANSPORT_UDP && slot->udp_sock != AVX_INVALID_SOCKET && client->has_udp_dest) {
+                        } else if (can_udp && client->transport == OAVX_TRANSPORT_UDP &&
+                                   slot->udp_sock != AVX_INVALID_SOCKET && client->has_udp_dest) {
                             send_ok = avx_send_video_datagram(slot, client, vslot, false);
                         } else {
                             if (vslot->metadata_buf && vslot->metadata_len > 0) {
@@ -289,7 +288,8 @@ void* avx_send_client_tx_worker(void* arg) {
                 }
             } else if (item.type == AVX_QUEUE_ITEM_AUDIO || item.type == AVX_QUEUE_ITEM_METADATA) {
                 if (item.shared_pkt && item.shared_pkt->data && item.shared_pkt->size > 0) {
-                    if (item.type == AVX_QUEUE_ITEM_AUDIO && client->transport == OAVX_TRANSPORT_RUDP && slot->rudp_sender && client->has_udp_dest) {
+                    if (item.type == AVX_QUEUE_ITEM_AUDIO && client->transport == OAVX_TRANSPORT_RUDP &&
+                        slot->rudp_sender && client->has_udp_dest) {
                         uint32_t seq = 0x80000000u | (((uint32_t)client->audio_packets_sent) & 0x7FFFFFFFu);
                         uint32_t udp_fourcc = OAVX_FOURCC_AUDIO_TYPE_FLTP;
                         if (item.shared_pkt->size >= 8) {
@@ -299,12 +299,12 @@ void* avx_send_client_tx_worker(void* arg) {
                                 memcpy(&udp_fourcc, item.shared_pkt->data + 4, 4);
                             }
                         }
-                        if (avx_udp_rudp_send_frame(slot->rudp_sender, &client->udp_dest_addr,
-                                                    seq, udp_fourcc, 0,
+                        if (avx_udp_rudp_send_frame(slot->rudp_sender, &client->udp_dest_addr, seq, udp_fourcc, 0,
                                                     item.shared_pkt->data, item.shared_pkt->size) != 0) {
                             send_ok = false;
                         }
-                    } else if (item.type == AVX_QUEUE_ITEM_AUDIO && client->transport == OAVX_TRANSPORT_UDP && slot->udp_sock != AVX_INVALID_SOCKET && client->has_udp_dest) {
+                    } else if (item.type == AVX_QUEUE_ITEM_AUDIO && client->transport == OAVX_TRANSPORT_UDP &&
+                               slot->udp_sock != AVX_INVALID_SOCKET && client->has_udp_dest) {
                         uint32_t seq = 0x80000000u | (((uint32_t)client->audio_packets_sent) & 0x7FFFFFFFu);
                         uint32_t udp_fourcc = OAVX_FOURCC_AUDIO_TYPE_FLTP;
                         if (item.shared_pkt->size >= 8) {
@@ -314,8 +314,7 @@ void* avx_send_client_tx_worker(void* arg) {
                                 memcpy(&udp_fourcc, item.shared_pkt->data + 4, 4);
                             }
                         }
-                        if (avx_udp_send_frame(slot->udp_sock, &client->udp_dest_addr,
-                                               seq, udp_fourcc, 0,
+                        if (avx_udp_send_frame(slot->udp_sock, &client->udp_dest_addr, seq, udp_fourcc, 0,
                                                item.shared_pkt->data, item.shared_pkt->size) != 0) {
                             send_ok = false;
                         }
@@ -378,8 +377,8 @@ void* avx_send_client_tx_worker(void* arg) {
 }
 
 /* Background worker polling client sockets and parsing incoming wire commands (PTZ, tally, ping). */
-void* avx_send_client_rx_worker(void* arg) {
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)arg;
+void *avx_send_client_rx_worker(void *arg) {
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)arg;
 
     while (1) {
         avx_pollfd_t pfds[AVX_MAX_CLIENTS];
@@ -391,8 +390,7 @@ void* avx_send_client_rx_worker(void* arg) {
         avx_mutex_lock(&slot->lock);
         bool keep_running = (slot->running && slot->client_rx_running);
         for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
-            if (slot->clients[i].fd == AVX_INVALID_SOCKET &&
-                slot->clients[i].pending_close_fd != AVX_INVALID_SOCKET &&
+            if (slot->clients[i].fd == AVX_INVALID_SOCKET && slot->clients[i].pending_close_fd != AVX_INVALID_SOCKET &&
                 slot->clients[i].tx_exited) {
                 reap_fds[nreap++] = slot->clients[i].pending_close_fd;
                 slot->clients[i].pending_close_fd = AVX_INVALID_SOCKET;
@@ -437,7 +435,7 @@ void* avx_send_client_rx_worker(void* arg) {
 
             if (pfds[p].revents & POLLIN) {
                 uint32_t magic = 0;
-                ssize_t n = recv(fd, (char*)&magic, sizeof(magic), MSG_WAITALL);
+                ssize_t n = recv(fd, (char *)&magic, sizeof(magic), MSG_WAITALL);
                 if (n <= 0) {
                     avx_mutex_lock(&slot->lock);
                     if (slot->clients[c_idx].fd == fd) {
@@ -451,12 +449,12 @@ void* avx_send_client_rx_worker(void* arg) {
                     (slot->wire_profile.compat_magic_metadata && magic == slot->wire_profile.compat_magic_metadata)) {
                     AVX_PACKED_START
                     struct {
-                        int64_t  timecode;
+                        int64_t timecode;
                         uint32_t payload_len;
                     } AVX_PACKED mhdr;
                     AVX_PACKED_END
 
-                    if (recv(fd, (char*)&mhdr, sizeof(mhdr), MSG_WAITALL) != (ssize_t)sizeof(mhdr)) {
+                    if (recv(fd, (char *)&mhdr, sizeof(mhdr), MSG_WAITALL) != (ssize_t)sizeof(mhdr)) {
                         avx_mutex_lock(&slot->lock);
                         if (slot->clients[c_idx].fd == fd) {
                             avx_send_remove_client_locked(slot, c_idx);
@@ -466,7 +464,7 @@ void* avx_send_client_rx_worker(void* arg) {
                     }
 
                     if (mhdr.payload_len > 0 && mhdr.payload_len < 65536) {
-                        char *mbuf = (char*)malloc(mhdr.payload_len + 1);
+                        char *mbuf = (char *)malloc(mhdr.payload_len + 1);
                         if (!mbuf) continue;
                         if (recv(fd, mbuf, mhdr.payload_len, MSG_WAITALL) != (ssize_t)mhdr.payload_len) {
                             free(mbuf);
@@ -487,7 +485,7 @@ void* avx_send_client_rx_worker(void* arg) {
                             if (strstr(mbuf, slot->wire_profile.tally_tag) != NULL || strstr(mbuf, "tally") != NULL) {
                                 const char *prog = strstr(mbuf, "on_program=\"");
                                 const char *prev = strstr(mbuf, "on_preview=\"");
-                                const char *rec  = strstr(mbuf, "on_recording=\"");
+                                const char *rec = strstr(mbuf, "on_recording=\"");
                                 if (!rec) rec = strstr(mbuf, "recording=\"");
                                 slot->clients[c_idx].tally.flags = OAVX_TALLY_NONE;
                                 if (prog && strncmp(prog + 12, "true", 4) == 0) {
@@ -509,19 +507,24 @@ void* avx_send_client_rx_worker(void* arg) {
                             if (strstr(mbuf, "transport") != NULL) {
                                 const char *m_attr = strstr(mbuf, "mode=\"");
                                 if (m_attr) {
-                                    if (strncmp(m_attr + 6, "rudp", 4) == 0) slot->clients[c_idx].transport = OAVX_TRANSPORT_RUDP;
-                                    else if (strncmp(m_attr + 6, "udp", 3) == 0) slot->clients[c_idx].transport = OAVX_TRANSPORT_UDP;
-                                    else if (strncmp(m_attr + 6, "tcp", 3) == 0) slot->clients[c_idx].transport = OAVX_TRANSPORT_TCP;
+                                    if (strncmp(m_attr + 6, "rudp", 4) == 0)
+                                        slot->clients[c_idx].transport = OAVX_TRANSPORT_RUDP;
+                                    else if (strncmp(m_attr + 6, "udp", 3) == 0)
+                                        slot->clients[c_idx].transport = OAVX_TRANSPORT_UDP;
+                                    else if (strncmp(m_attr + 6, "tcp", 3) == 0)
+                                        slot->clients[c_idx].transport = OAVX_TRANSPORT_TCP;
                                 }
                                 const char *p_attr = strstr(mbuf, "port=\"");
                                 if (p_attr) {
                                     int cp = atoi(p_attr + 6);
                                     if (cp > 0 && cp <= 65535) {
                                         if (slot->clients[c_idx].udp_dest_addr.ss_family == AF_INET6) {
-                                            ((struct sockaddr_in6*)&slot->clients[c_idx].udp_dest_addr)->sin6_port = htons((uint16_t)cp);
+                                            ((struct sockaddr_in6 *)&slot->clients[c_idx].udp_dest_addr)->sin6_port =
+                                                htons((uint16_t)cp);
                                             slot->clients[c_idx].has_udp_dest = true;
                                         } else if (slot->clients[c_idx].udp_dest_addr.ss_family == AF_INET) {
-                                            ((struct sockaddr_in*)&slot->clients[c_idx].udp_dest_addr)->sin_port = htons((uint16_t)cp);
+                                            ((struct sockaddr_in *)&slot->clients[c_idx].udp_dest_addr)->sin_port =
+                                                htons((uint16_t)cp);
                                             slot->clients[c_idx].has_udp_dest = true;
                                         }
                                     }
@@ -545,8 +548,10 @@ void* avx_send_client_rx_worker(void* arg) {
                                 bool force_wan = false;
                                 bool force_lan = false;
                                 if (prof_attr) {
-                                    if (strncmp(prof_attr + 9, "wan", 3) == 0) force_wan = true;
-                                    else if (strncmp(prof_attr + 9, "lan", 3) == 0) force_lan = true;
+                                    if (strncmp(prof_attr + 9, "wan", 3) == 0)
+                                        force_wan = true;
+                                    else if (strncmp(prof_attr + 9, "lan", 3) == 0)
+                                        force_lan = true;
                                 }
 
                                 bool is_wan = false;
@@ -562,10 +567,11 @@ void* avx_send_client_rx_worker(void* arg) {
                                     slot->clients[c_idx].is_wan_client = true;
                                     slot->clients[c_idx].is_wan_registered = true;
                                     slot->wan_client_count++;
-                                    if (slot->wan_codec_fourcc == 0 || slot->clients[c_idx].negotiated_codec_fourcc != 0) {
+                                    if (slot->wan_codec_fourcc == 0 ||
+                                        slot->clients[c_idx].negotiated_codec_fourcc != 0) {
                                         slot->wan_codec_fourcc = slot->clients[c_idx].negotiated_codec_fourcc
-                                            ? slot->clients[c_idx].negotiated_codec_fourcc
-                                            : OAVX_FOURCC_VIDEO_TYPE_H264;
+                                                                     ? slot->clients[c_idx].negotiated_codec_fourcc
+                                                                     : OAVX_FOURCC_VIDEO_TYPE_H264;
                                     }
                                     if (slot->wan_encoder) {
                                         avx_video_encoder_request_keyframe(slot->wan_encoder);
@@ -603,8 +609,8 @@ void* avx_send_client_rx_worker(void* arg) {
 }
 
 /* TCP listener thread accepting incoming connections and performing initial client handshake. */
-void* avx_send_listen_worker(void* arg) {
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)arg;
+void *avx_send_listen_worker(void *arg) {
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)arg;
 
     while (1) {
         avx_socket_t listen_fd;
@@ -613,8 +619,7 @@ void* avx_send_listen_worker(void* arg) {
         listen_fd = slot->tcp_listen_fd;
         int64_t now_ns = avx_time_ns();
         bool do_mdns = (keep_running &&
-                        (slot->last_mdns_broadcast_ns == 0 ||
-                         (now_ns - slot->last_mdns_broadcast_ns) > 30000000000LL));
+                        (slot->last_mdns_broadcast_ns == 0 || (now_ns - slot->last_mdns_broadcast_ns) > 30000000000LL));
         if (do_mdns) {
             slot->last_mdns_broadcast_ns = now_ns;
         }
@@ -648,7 +653,7 @@ void* avx_send_listen_worker(void* arg) {
 
         struct sockaddr_storage client_addr;
         avx_socklen_t client_len = sizeof(client_addr);
-        avx_socket_t client_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_len);
+        avx_socket_t client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &client_len);
         if (client_fd == AVX_INVALID_SOCKET) {
             avx_mutex_lock(&slot->lock);
             bool still_running = slot->running;
@@ -663,13 +668,13 @@ void* avx_send_listen_worker(void* arg) {
         avx_socket_set_keepalive(client_fd, 2, 1, 3);
         avx_socket_set_tcp_nodelay(client_fd, true);
         int buf_size = 16 * 1024 * 1024;
-        setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, (const char*)&buf_size, sizeof(buf_size));
-        setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, (const char *)&buf_size, sizeof(buf_size));
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, (const char *)&buf_size, sizeof(buf_size));
 
         struct timeval tv;
         tv.tv_sec = 0;
         tv.tv_usec = 250000; /* 250 ms send timeout to prevent blocking indefinitely */
-        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
 
         avx_mutex_lock(&slot->lock);
 
@@ -742,9 +747,9 @@ void* avx_send_listen_worker(void* arg) {
         memset(&slot->clients[assigned_slot].udp_dest_addr, 0, sizeof(slot->clients[assigned_slot].udp_dest_addr));
         slot->clients[assigned_slot].udp_dest_addr = client_addr;
         if (client_addr.ss_family == AF_INET) {
-            ((struct sockaddr_in*)&slot->clients[assigned_slot].udp_dest_addr)->sin_port = 0;
+            ((struct sockaddr_in *)&slot->clients[assigned_slot].udp_dest_addr)->sin_port = 0;
         } else if (client_addr.ss_family == AF_INET6) {
-            ((struct sockaddr_in6*)&slot->clients[assigned_slot].udp_dest_addr)->sin6_port = 0;
+            ((struct sockaddr_in6 *)&slot->clients[assigned_slot].udp_dest_addr)->sin6_port = 0;
         }
         slot->active_clients++;
 
@@ -801,29 +806,31 @@ void* avx_send_listen_worker(void* arg) {
         avx_mutex_unlock(&slot->lock);
 
         /* Send standard wire protocol XML handshake */
-        const char *t_str = (slot->transport == OAVX_TRANSPORT_RUDP) ? "rudp" :
-                            (slot->transport == OAVX_TRANSPORT_UDP ? "udp" : "tcp");
+        const char *t_str =
+            (slot->transport == OAVX_TRANSPORT_RUDP) ? "rudp" : (slot->transport == OAVX_TRANSPORT_UDP ? "udp" : "tcp");
         char xml[512];
-        int xml_len = snprintf(xml, sizeof(xml),
-            "<%s name=\"%s\" port=\"%u\" version=\"0.2.2\">\n"
-            "  <capabilities video=\"1\" audio=\"1\" metadata=\"1\" transport=\"%s\" udp_port=\"%u\"/>\n"
-            "</%s>\n",
-            slot->wire_profile.handshake_tag, slot->name, slot->port,
-            t_str, slot->udp_port, slot->wire_profile.handshake_tag);
+        int xml_len =
+            snprintf(xml, sizeof(xml),
+                     "<%s name=\"%s\" port=\"%u\" version=\"0.2.2\">\n"
+                     "  <capabilities video=\"1\" audio=\"1\" metadata=\"1\" transport=\"%s\" udp_port=\"%u\"/>\n"
+                     "</%s>\n",
+                     slot->wire_profile.handshake_tag, slot->name, slot->port, t_str, slot->udp_port,
+                     slot->wire_profile.handshake_tag);
 
         uint32_t payload_len = (uint32_t)xml_len;
         uint64_t init_tcp_bytes = 0;
-        ssize_t n_hdr = send(client_fd, (const char*)&payload_len, sizeof(payload_len), MSG_NOSIGNAL);
+        ssize_t n_hdr = send(client_fd, (const char *)&payload_len, sizeof(payload_len), MSG_NOSIGNAL);
         if (n_hdr > 0) init_tcp_bytes += (uint64_t)n_hdr;
         ssize_t n_xml = send(client_fd, xml, payload_len, MSG_NOSIGNAL);
         if (n_xml > 0) init_tcp_bytes += (uint64_t)n_xml;
 
         avx_trace_packet("[TX]", "AVX TCP HANDSHAKE", xml, payload_len);
-        uint8_t *handshake_pkt = (uint8_t*)malloc(4 + payload_len);
+        uint8_t *handshake_pkt = (uint8_t *)malloc(4 + payload_len);
         if (handshake_pkt) {
             memcpy(handshake_pkt, &payload_len, 4);
             memcpy(handshake_pkt + 4, xml, payload_len);
-            avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 1, 1, 0x18, handshake_pkt, 4 + payload_len);
+            avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 1, 1, 0x18, handshake_pkt,
+                               4 + payload_len);
             free(handshake_pkt);
         }
 
@@ -840,14 +847,14 @@ void* avx_send_listen_worker(void* arg) {
             AVX_PACKED_START
             struct {
                 uint32_t magic;
-                int64_t  timecode;
+                int64_t timecode;
                 uint32_t payload_len;
             } AVX_PACKED mhdr;
             AVX_PACKED_END
             mhdr.magic = slot->wire_profile.magic_metadata;
             mhdr.timecode = 0;
             mhdr.payload_len = (uint32_t)mlen;
-            ssize_t nm1 = send(client_fd, (const char*)&mhdr, sizeof(mhdr), MSG_NOSIGNAL);
+            ssize_t nm1 = send(client_fd, (const char *)&mhdr, sizeof(mhdr), MSG_NOSIGNAL);
             if (nm1 > 0) init_tcp_bytes += (uint64_t)nm1;
             ssize_t nm2 = send(client_fd, slot->conn_metadata[m], mlen, MSG_NOSIGNAL);
             if (nm2 > 0) init_tcp_bytes += (uint64_t)nm2;
@@ -860,8 +867,7 @@ void* avx_send_listen_worker(void* arg) {
         }
 
         /* Launch worker thread to pump async TX queue */
-        if (avx_thread_create(&slot->clients[assigned_slot].tx_thread,
-                              avx_send_client_tx_worker,
+        if (avx_thread_create(&slot->clients[assigned_slot].tx_thread, avx_send_client_tx_worker,
                               &slot->clients[assigned_slot]) == 0) {
             slot->clients[assigned_slot].tx_thread_active = true;
         } else {
@@ -874,7 +880,7 @@ void* avx_send_listen_worker(void* arg) {
     return NULL;
 }
 
-bool avx_send_start_listener(avx_send_ctx_t* send_ctx) {
+bool avx_send_start_listener(avx_send_ctx_t *send_ctx) {
     if (!send_ctx) return false;
 
     const char *bind_ip = (send_ctx->bind_ip[0] != '\0') ? send_ctx->bind_ip : NULL;
@@ -904,11 +910,12 @@ bool avx_send_start_listener(avx_send_ctx_t* send_ctx) {
     return true;
 }
 
-OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send_ctx) {
+OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t *send_ctx) {
     if (!send_ctx) return;
     avx_socket_t close_client_fds[AVX_MAX_CLIENTS];
     avx_socket_t close_listen_fd = AVX_INVALID_SOCKET;
-    for (int i = 0; i < AVX_MAX_CLIENTS; ++i) close_client_fds[i] = AVX_INVALID_SOCKET;
+    for (int i = 0; i < AVX_MAX_CLIENTS; ++i)
+        close_client_fds[i] = AVX_INVALID_SOCKET;
 
     avx_mutex_lock(&send_ctx->lock);
     send_ctx->running = false;

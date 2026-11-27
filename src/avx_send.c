@@ -20,7 +20,7 @@
  * Allocates transmission session slot, sets up multi-client transmit queues,
  * discovers bind IP / network interfaces, and starts background mDNS announce.
  */
-OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_settings) {
+OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t *p_create_settings) {
     avx_mutex_lock(&g_avx_state.global_lock);
     if (!g_avx_state.initialized) {
         avx_mutex_unlock(&g_avx_state.global_lock);
@@ -29,12 +29,12 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
     }
 
     /* Initialize PCAP dump if requested via environment */
-    const char* pcap_env = getenv("OPENAVX_DUMP_PCAP");
+    const char *pcap_env = getenv("OPENAVX_DUMP_PCAP");
     if (pcap_env) {
         avx_pcap_init(pcap_env);
     }
 
-    avx_send_ctx_t* slot = NULL;
+    avx_send_ctx_t *slot = NULL;
     for (int i = 0; i < AVX_MAX_SESSIONS; ++i) {
         if (!g_avx_state.send_slots[i].in_use) {
             slot = &g_avx_state.send_slots[i];
@@ -111,7 +111,8 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
     slot->max_clients = max_clients;
 
     const oavx_wire_profile_t *wp = (p_create_settings && p_create_settings->wire_profile)
-        ? p_create_settings->wire_profile : avx_wire_get_active_profile();
+                                        ? p_create_settings->wire_profile
+                                        : avx_wire_get_active_profile();
     slot->wire_profile = *wp;
     slot->port = wp->base_port ? wp->base_port : AVX_DEFAULT_PORT;
 
@@ -208,7 +209,7 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
     slot->video_quality = 0;
     slot->video_codec_fourcc = p_create_settings ? p_create_settings->video_codec_fourcc : 0;
     slot->video_bitrate_kbps = p_create_settings ? p_create_settings->video_bitrate_kbps : 0;
-    slot->keyframe_interval  = p_create_settings ? p_create_settings->keyframe_interval : 0;
+    slot->keyframe_interval = p_create_settings ? p_create_settings->keyframe_interval : 0;
 
     slot->wan_client_count = 0;
     slot->wan_codec_fourcc = 0;
@@ -243,9 +244,8 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
                         avx_rate_controller_apply_to_sender(slot->rate_ctl, slot->rudp_sender);
                     }
                     if (p_create_settings && p_create_settings->passphrase) {
-                        avx_udp_rudp_sender_set_passphrase((avx_udp_rudp_sender_t*)slot->rudp_sender,
-                                                           p_create_settings->passphrase,
-                                                           p_create_settings->name);
+                        avx_udp_rudp_sender_set_passphrase((avx_udp_rudp_sender_t *)slot->rudp_sender,
+                                                           p_create_settings->passphrase, p_create_settings->name);
                     }
                     slot->nack_thread_running = true;
                     if (avx_thread_create(&slot->nack_thread, avx_send_nack_service_worker, slot) == 0) {
@@ -297,7 +297,8 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
 
         char *saveptr = NULL;
         char *token = strtok_r(targets_copy, ",; \t", &saveptr);
-        while (token && slot->num_discovery_server_socks < (int)(sizeof(slot->discovery_server_socks)/sizeof(slot->discovery_server_socks[0]))) {
+        while (token && slot->num_discovery_server_socks <
+                            (int)(sizeof(slot->discovery_server_socks) / sizeof(slot->discovery_server_socks[0]))) {
             char srv_ip[64] = "127.0.0.1";
             uint16_t srv_port = AVX_DISCOVERY_SERVER_DEFAULT_PORT;
             char *colon = strchr(token, ':');
@@ -323,7 +324,7 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
 
 OPENAVX_API void avx_tx_destroy(avx_tx_instance_t p_instance) {
     if (!p_instance) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     avx_send_stop_listener(slot);
     avx_mutex_destroy(&slot->lock);
@@ -370,7 +371,7 @@ OPENAVX_API void avx_tx_destroy(avx_tx_instance_t p_instance) {
         slot->nack_thread_active = false;
     }
     if (slot->rudp_sender) {
-        avx_udp_rudp_sender_destroy((avx_udp_rudp_sender_t*)slot->rudp_sender);
+        avx_udp_rudp_sender_destroy((avx_udp_rudp_sender_t *)slot->rudp_sender);
         slot->rudp_sender = NULL;
     }
     if (slot->udp_sock != AVX_INVALID_SOCKET) {
@@ -413,12 +414,12 @@ OPENAVX_API void avx_tx_destroy(avx_tx_instance_t p_instance) {
     }
 
     if (slot->rtsp_server) {
-        avx_rtsp_server_destroy((avx_rtsp_server_t*)slot->rtsp_server);
+        avx_rtsp_server_destroy((avx_rtsp_server_t *)slot->rtsp_server);
         slot->rtsp_server = NULL;
     }
 
     if (slot->web_server) {
-        avx_web_server_destroy((avx_web_server_t*)slot->web_server);
+        avx_web_server_destroy((avx_web_server_t *)slot->web_server);
         slot->web_server = NULL;
     }
 
@@ -438,11 +439,8 @@ static void avx_pack_video_frame(const oavx_video_frame_t *src, uint8_t *dst, si
     const uint8_t *p1 = src->planes[1];
     const uint8_t *p2 = src->planes[2];
 
-    if (src->fourcc == OAVX_FOURCC_VIDEO_TYPE_H264 ||
-        src->fourcc == OAVX_FOURCC_VIDEO_TYPE_HEVC ||
-        src->fourcc == OAVX_FOURCC_VIDEO_TYPE_AV01 ||
-        src->fourcc == 0x47504A4D ||
-        src->fourcc == 0x4A50474D) {
+    if (src->fourcc == OAVX_FOURCC_VIDEO_TYPE_H264 || src->fourcc == OAVX_FOURCC_VIDEO_TYPE_HEVC ||
+        src->fourcc == OAVX_FOURCC_VIDEO_TYPE_AV01 || src->fourcc == 0x47504A4D || src->fourcc == 0x4A50474D) {
         size_t copy_sz = (s0 > 0 && s0 <= dst_len) ? s0 : dst_len;
         memcpy(dst, p0, copy_sz);
         return;
@@ -532,7 +530,9 @@ static void avx_pack_video_frame(const oavx_video_frame_t *src, uint8_t *dst, si
         const uint8_t *v_src = p2 ? p2 : (u_src + (size_t)h2 * src_u_stride);
         size_t src_v_stride = (s2 > 0) ? s2 : w2;
         if (src->fourcc == OAVX_FOURCC_VIDEO_TYPE_YV12) {
-            uint8_t *tmp = u_dst; u_dst = v_dst; v_dst = tmp;
+            uint8_t *tmp = u_dst;
+            u_dst = v_dst;
+            v_dst = tmp;
         }
         for (uint32_t y = 0; y < h2; ++y) {
             memcpy(u_dst + (size_t)y * w2, u_src + y * src_u_stride, w2);
@@ -562,15 +562,15 @@ static void avx_pack_video_frame(const oavx_video_frame_t *src, uint8_t *dst, si
  * frame once (primary codec and optional WAN simulcast), then distributes
  * references to active client queues. Drops frame if all pool slots are in-flight.
  */
-OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_video_frame_t* p_video_data) {
+OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_video_frame_t *p_video_data) {
     if (!p_instance || !p_video_data) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     avx_mutex_lock(&slot->lock);
     slot->video_frames_sent++;
 
-    int rtsp_clients = slot->rtsp_server ? avx_rtsp_server_get_client_count((avx_rtsp_server_t*)slot->rtsp_server) : 0;
-    int web_clients  = slot->web_server  ? avx_web_server_get_client_count((avx_web_server_t*)slot->web_server) : 0;
+    int rtsp_clients = slot->rtsp_server ? avx_rtsp_server_get_client_count((avx_rtsp_server_t *)slot->rtsp_server) : 0;
+    int web_clients = slot->web_server ? avx_web_server_get_client_count((avx_web_server_t *)slot->web_server) : 0;
 
     if ((slot->active_clients > 0 || rtsp_clients > 0 || web_clients > 0) && p_video_data->planes[0]) {
         /* Find free slot in shared circulating video pool */
@@ -600,8 +600,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
         bool is_compressed_passthrough = (p_video_data->fourcc == OAVX_FOURCC_VIDEO_TYPE_H264 ||
                                           p_video_data->fourcc == OAVX_FOURCC_VIDEO_TYPE_HEVC ||
                                           p_video_data->fourcc == OAVX_FOURCC_VIDEO_TYPE_AV01 ||
-                                          p_video_data->fourcc == 0x47504A4D ||
-                                          p_video_data->fourcc == 0x4A50474D);
+                                          p_video_data->fourcc == 0x47504A4D || p_video_data->fourcc == 0x4A50474D);
 
         uint32_t target_comp_fourcc = 0;
         if (!is_compressed_passthrough) {
@@ -619,9 +618,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
             uint32_t req_fourcc = target_comp_fourcc;
             uint32_t req_w = p_video_data->width;
             uint32_t req_h = p_video_data->height;
-            if (!slot->video_encoder ||
-                slot->video_enc_fourcc != req_fourcc ||
-                slot->video_enc_width != req_w ||
+            if (!slot->video_encoder || slot->video_enc_fourcc != req_fourcc || slot->video_enc_width != req_w ||
                 slot->video_enc_height != req_h) {
                 if (slot->video_encoder) {
                     avx_video_encoder_destroy(slot->video_encoder);
@@ -630,6 +627,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                 avx_video_enc_cfg_t vcfg;
                 memset(&vcfg, 0, sizeof(vcfg));
                 vcfg.fourcc = req_fourcc;
+                vcfg.src_fourcc = (uint32_t)p_video_data->fourcc;
                 vcfg.width = req_w;
                 vcfg.height = req_h;
                 uint8_t eff_quality = slot->video_quality;
@@ -663,9 +661,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                 if (wan_br_kbps < 500) wan_br_kbps = 500;
                 if (wan_br_kbps > 50000) wan_br_kbps = 50000;
             }
-            if (!slot->wan_encoder ||
-                slot->wan_enc_fourcc != wan_fourcc ||
-                slot->wan_enc_width != req_w ||
+            if (!slot->wan_encoder || slot->wan_enc_fourcc != wan_fourcc || slot->wan_enc_width != req_w ||
                 slot->wan_enc_height != req_h) {
                 if (slot->wan_encoder) {
                     avx_video_encoder_destroy(slot->wan_encoder);
@@ -704,9 +700,9 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
             uint32_t xres;
             uint32_t yres;
             uint32_t fourcc;
-            int32_t  frame_rate_n;
-            int32_t  frame_rate_d;
-            int64_t  timecode;
+            int32_t frame_rate_n;
+            int32_t frame_rate_d;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED hdr;
         AVX_PACKED_END
@@ -746,7 +742,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
         AVX_PACKED_START
         struct {
             uint32_t magic;
-            int64_t  timecode;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED mhdr;
         AVX_PACKED_END
@@ -760,7 +756,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
             vslot->metadata_hdr_len = sizeof(mhdr);
 
             if (vslot->metadata_buf) free(vslot->metadata_buf);
-            vslot->metadata_buf = (uint8_t*)malloc(mlen + 1);
+            vslot->metadata_buf = (uint8_t *)malloc(mlen + 1);
             if (vslot->metadata_buf) {
                 memcpy(vslot->metadata_buf, p_video_data->metadata, mlen);
                 vslot->metadata_buf[mlen] = '\0';
@@ -783,7 +779,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
             size_t max_out = (size_t)p_video_data->width * p_video_data->height * 4;
             if (max_out < 1048576) max_out = 1048576;
             if (vslot->payload_capacity < max_out) {
-                uint8_t *nb = (uint8_t*)realloc(vslot->payload, max_out);
+                uint8_t *nb = (uint8_t *)realloc(vslot->payload, max_out);
                 if (nb) {
                     vslot->payload = nb;
                     vslot->payload_capacity = max_out;
@@ -794,8 +790,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                 int enc_ret = -1;
                 if (venc) {
                     bool is_kf = false;
-                    enc_ret = avx_video_encoder_encode(venc, p_video_data,
-                                                       vslot->payload, vslot->payload_capacity,
+                    enc_ret = avx_video_encoder_encode(venc, p_video_data, vslot->payload, vslot->payload_capacity,
                                                        &actual_out, &is_kf);
                 }
                 if (enc_ret == 0 && actual_out > 0) {
@@ -807,12 +802,12 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                     fourcc = (uint32_t)p_video_data->fourcc;
                     if (avx_is_speedhq_fourcc(fourcc)) {
                         const uint8_t *alpha_plane = p_video_data->planes[1];
-                        if (!alpha_plane && (fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ3 ||
-                                             fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ1 ||
-                                             fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ5 ||
-                                             fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ7 ||
-                                             fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ9)) {
-                            alpha_plane = p_video_data->planes[0] + (size_t)p_video_data->width * p_video_data->height * 2;
+                        if (!alpha_plane &&
+                            (fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ3 || fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ1 ||
+                             fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ5 || fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ7 ||
+                             fourcc == OAVX_FOURCC_VIDEO_TYPE_SHQ9)) {
+                            alpha_plane =
+                                p_video_data->planes[0] + (size_t)p_video_data->width * p_video_data->height * 2;
                         }
                         if (alpha_plane) {
                             fourcc = (uint32_t)OAVX_FOURCC_VIDEO_TYPE_UYVA;
@@ -823,7 +818,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                         }
                     }
                     if (vslot->payload_capacity < frame_bytes) {
-                        uint8_t *nb = (uint8_t*)realloc(vslot->payload, frame_bytes);
+                        uint8_t *nb = (uint8_t *)realloc(vslot->payload, frame_bytes);
                         if (nb) {
                             vslot->payload = nb;
                             vslot->payload_capacity = frame_bytes;
@@ -840,7 +835,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
         } else {
             /* Raw video copy into pool slot */
             if (vslot->payload_capacity < frame_bytes) {
-                uint8_t *nb = (uint8_t*)realloc(vslot->payload, frame_bytes);
+                uint8_t *nb = (uint8_t *)realloc(vslot->payload, frame_bytes);
                 if (nb) {
                     vslot->payload = nb;
                     vslot->payload_capacity = frame_bytes;
@@ -873,12 +868,11 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
         if (wan_clients > 0 && wan_enc) {
             size_t max_wan_out = (size_t)p_video_data->width * p_video_data->height;
             if (max_wan_out < 1048576) max_wan_out = 1048576;
-            uint8_t *wan_buf = (uint8_t*)malloc(sizeof(hdr) + max_wan_out);
+            uint8_t *wan_buf = (uint8_t *)malloc(sizeof(hdr) + max_wan_out);
             if (wan_buf) {
                 size_t actual_wan = 0;
                 bool is_kf = false;
-                int enc_ret = avx_video_encoder_encode(wan_enc, p_video_data,
-                                                       wan_buf + sizeof(hdr), max_wan_out,
+                int enc_ret = avx_video_encoder_encode(wan_enc, p_video_data, wan_buf + sizeof(hdr), max_wan_out,
                                                        &actual_wan, &is_kf);
                 if (enc_ret == 0 && actual_wan > 0) {
                     AVX_PACKED_START
@@ -887,9 +881,9 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                         uint32_t xres;
                         uint32_t yres;
                         uint32_t fourcc;
-                        int32_t  frame_rate_n;
-                        int32_t  frame_rate_d;
-                        int64_t  timecode;
+                        int32_t frame_rate_n;
+                        int32_t frame_rate_d;
+                        int64_t timecode;
                         uint32_t payload_len;
                     } AVX_PACKED wan_hdr;
                     AVX_PACKED_END
@@ -903,7 +897,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                     wan_hdr.payload_len = (uint32_t)actual_wan;
                     memcpy(wan_buf, &wan_hdr, sizeof(wan_hdr));
 
-                    wan_shared_pkt = (avx_tx_shared_pkt_t*)calloc(1, sizeof(avx_tx_shared_pkt_t));
+                    wan_shared_pkt = (avx_tx_shared_pkt_t *)calloc(1, sizeof(avx_tx_shared_pkt_t));
                     if (wan_shared_pkt) {
                         wan_shared_pkt->data = wan_buf;
                         wan_shared_pkt->size = sizeof(wan_hdr) + actual_wan;
@@ -925,8 +919,8 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
         size_t wire_bytes = sizeof(hdr) + frame_bytes + (has_metadata ? (sizeof(mhdr) + mlen) : 0);
         int64_t now_ns = avx_time_ns();
         float target_fps = (p_video_data->framerate.den > 0 && p_video_data->framerate.num > 0)
-                           ? ((float)p_video_data->framerate.num / (float)p_video_data->framerate.den)
-                           : 60.0f;
+                               ? ((float)p_video_data->framerate.num / (float)p_video_data->framerate.den)
+                               : 60.0f;
         if (target_fps < 1.0f) target_fps = 1.0f;
         if (target_fps > 240.0f) target_fps = 240.0f;
 
@@ -955,8 +949,8 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
 
             /* 2. Congestion Detection & Adaptive Temporal Decimation */
             uint32_t cadence = 1;
-            slot->clients[i].congestion_level = avx_send_evaluate_client_congestion(
-                &slot->clients[i], now_ns, client_wire_bytes, target_fps, &cadence);
+            slot->clients[i].congestion_level =
+                avx_send_evaluate_client_congestion(&slot->clients[i], now_ns, client_wire_bytes, target_fps, &cadence);
 
             if ((slot->clients[i].frame_seq % cadence) != 0) {
                 /* Decimate: skip this frame cleanly without enqueuing */
@@ -1019,11 +1013,12 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
             avx_trace_packet("[TX]", "AVX VIDEO FRAME", &hdr, sizeof(hdr));
             size_t sample_cap = hdr.payload_len > 1024 ? 1024 : hdr.payload_len;
             size_t snap_len = sizeof(hdr) + sample_cap;
-            uint8_t *snap = (uint8_t*)malloc(snap_len);
+            uint8_t *snap = (uint8_t *)malloc(snap_len);
             if (snap) {
                 memcpy(snap, &hdr, sizeof(hdr));
                 memcpy(snap + sizeof(hdr), vslot->payload, sample_cap);
-                avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 100, 1, 0x18, snap, snap_len);
+                avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 100, 1, 0x18, snap,
+                                   snap_len);
                 free(snap);
             }
         }
@@ -1035,7 +1030,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
     avx_mutex_unlock(&slot->lock);
 }
 
-void avx_tx_send_video_async(avx_tx_instance_t p_instance, const oavx_video_frame_t* p_video_data) {
+void avx_tx_send_video_async(avx_tx_instance_t p_instance, const oavx_video_frame_t *p_video_data) {
     avx_tx_send_video(p_instance, p_video_data);
 }
 
@@ -1051,13 +1046,13 @@ void avx_tx_release_shared_pkt_locked(avx_tx_shared_pkt_t *pkt) {
     }
 }
 
-static avx_tx_shared_pkt_t* avx_tx_acquire_audio_pkt(avx_send_ctx_t *slot, size_t needed_size) {
+static avx_tx_shared_pkt_t *avx_tx_acquire_audio_pkt(avx_send_ctx_t *slot, size_t needed_size) {
     avx_mutex_lock(&slot->lock);
     for (int i = 0; i < AVX_TX_AUDIO_POOL_SIZE; ++i) {
         avx_tx_shared_pkt_t *p = &slot->audio_pool[i];
         if (p->refcount == 0) {
             if (p->cap < needed_size) {
-                uint8_t *nb = (uint8_t*)realloc(p->data, needed_size);
+                uint8_t *nb = (uint8_t *)realloc(p->data, needed_size);
                 if (!nb) {
                     avx_mutex_unlock(&slot->lock);
                     return NULL;
@@ -1074,9 +1069,9 @@ static avx_tx_shared_pkt_t* avx_tx_acquire_audio_pkt(avx_send_ctx_t *slot, size_
     }
     avx_mutex_unlock(&slot->lock);
 
-    avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t*)malloc(sizeof(avx_tx_shared_pkt_t));
+    avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t *)malloc(sizeof(avx_tx_shared_pkt_t));
     if (!pkt) return NULL;
-    pkt->data = (uint8_t*)malloc(needed_size);
+    pkt->data = (uint8_t *)malloc(needed_size);
     if (!pkt->data) {
         free(pkt);
         return NULL;
@@ -1092,14 +1087,8 @@ static avx_tx_shared_pkt_t* avx_tx_acquire_audio_pkt(avx_send_ctx_t *slot, size_
  * Distributes shared refcounted audio packet to client queues. Preempts and
  * evicts queued video frames if client queue is full to prevent audio dropouts.
  */
-static void avx_tx_enqueue_audio_shared_pkt(
-    avx_send_ctx_t *slot,
-    avx_tx_shared_pkt_t *pkt,
-    const void *hdr_ptr,
-    size_t hdr_len,
-    const void *sample_ptr,
-    size_t sample_len
-) {
+static void avx_tx_enqueue_audio_shared_pkt(avx_send_ctx_t *slot, avx_tx_shared_pkt_t *pkt, const void *hdr_ptr,
+                                            size_t hdr_len, const void *sample_ptr, size_t sample_len) {
     int enqueued_count = 0;
 
     for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
@@ -1191,7 +1180,8 @@ static void avx_tx_enqueue_audio_shared_pkt(
                 if (sample_ptr && sample_cap > 0) {
                     memcpy(snap + clamped_hdr, sample_ptr, sample_cap);
                 }
-                avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 200, 1, 0x18, snap, snap_len);
+                avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 200, 1, 0x18, snap,
+                                   snap_len);
             }
         }
     }
@@ -1202,64 +1192,60 @@ static void avx_tx_enqueue_audio_shared_pkt(
  * Normalizes any supported oavx_audio_format_t (planar f32, interleaved f32/s16/s32)
  * into contiguous planar float32 ([ch0][ch1]...).
  */
-static bool avx_convert_audio_to_planar_f32(
-    const oavx_audio_frame_t *src,
-    float *dst_planar,
-    uint16_t channels,
-    uint32_t frames
-) {
+static bool avx_convert_audio_to_planar_f32(const oavx_audio_frame_t *src, float *dst_planar, uint16_t channels,
+                                            uint32_t frames) {
     if (!src || !dst_planar || !src->planes[0] || channels == 0 || frames == 0) {
         return false;
     }
 
     switch (src->format) {
-        case OAVX_AUDIO_FMT_FLT_INTERLEAVED:
-            avx_simd_deinterleave_flt_to_planar((const float*)src->planes[0], dst_planar, channels, frames);
-            return true;
-        case OAVX_AUDIO_FMT_S16_INTERLEAVED:
-            avx_simd_deinterleave_s16_to_planar((const int16_t*)src->planes[0], dst_planar, channels, frames);
-            return true;
-        case OAVX_AUDIO_FMT_S32_INTERLEAVED:
-            avx_simd_deinterleave_s32_to_planar((const int32_t*)src->planes[0], dst_planar, channels, frames);
-            return true;
-        case OAVX_AUDIO_FMT_FLT_PLANAR: {
-            size_t ch_bytes = (size_t)frames * sizeof(float);
-            bool any_extra_plane = false;
-            for (uint16_t c = 1; c < channels; ++c) {
-                if (src->planes[c] != NULL) {
-                    any_extra_plane = true;
-                    break;
-                }
+    case OAVX_AUDIO_FMT_FLT_INTERLEAVED:
+        avx_simd_deinterleave_flt_to_planar((const float *)src->planes[0], dst_planar, channels, frames);
+        return true;
+    case OAVX_AUDIO_FMT_S16_INTERLEAVED:
+        avx_simd_deinterleave_s16_to_planar((const int16_t *)src->planes[0], dst_planar, channels, frames);
+        return true;
+    case OAVX_AUDIO_FMT_S32_INTERLEAVED:
+        avx_simd_deinterleave_s32_to_planar((const int32_t *)src->planes[0], dst_planar, channels, frames);
+        return true;
+    case OAVX_AUDIO_FMT_FLT_PLANAR: {
+        size_t ch_bytes = (size_t)frames * sizeof(float);
+        bool any_extra_plane = false;
+        for (uint16_t c = 1; c < channels; ++c) {
+            if (src->planes[c] != NULL) {
+                any_extra_plane = true;
+                break;
             }
-            if (any_extra_plane) {
-                for (uint16_t c = 0; c < channels; ++c) {
-                    if (src->planes[c]) {
-                        memcpy(dst_planar + (size_t)c * frames, src->planes[c], ch_bytes);
-                    } else {
-                        memset(dst_planar + (size_t)c * frames, 0, ch_bytes);
-                    }
-                }
-            } else {
-                size_t ch_stride = (src->stride_bytes >= ch_bytes) ? src->stride_bytes : ch_bytes;
-                if (channels == 1 || ch_stride == ch_bytes) {
-                    memcpy(dst_planar, src->planes[0], (size_t)channels * ch_bytes);
-                } else {
-                    const uint8_t *base = (const uint8_t*)src->planes[0];
-                    for (uint16_t c = 0; c < channels; ++c) {
-                        memcpy(dst_planar + (size_t)c * frames, base + (size_t)c * ch_stride, ch_bytes);
-                    }
-                }
-            }
-            return true;
         }
-        default:
-            return false;
+        if (any_extra_plane) {
+            for (uint16_t c = 0; c < channels; ++c) {
+                if (src->planes[c]) {
+                    memcpy(dst_planar + (size_t)c * frames, src->planes[c], ch_bytes);
+                } else {
+                    memset(dst_planar + (size_t)c * frames, 0, ch_bytes);
+                }
+            }
+        } else {
+            size_t ch_stride = (src->stride_bytes >= ch_bytes) ? src->stride_bytes : ch_bytes;
+            if (channels == 1 || ch_stride == ch_bytes) {
+                memcpy(dst_planar, src->planes[0], (size_t)channels * ch_bytes);
+            } else {
+                const uint8_t *base = (const uint8_t *)src->planes[0];
+                for (uint16_t c = 0; c < channels; ++c) {
+                    memcpy(dst_planar + (size_t)c * frames, base + (size_t)c * ch_stride, ch_bytes);
+                }
+            }
+        }
+        return true;
+    }
+    default:
+        return false;
     }
 }
 
-static float* avx_ensure_audio_planar_scratch(avx_send_ctx_t *slot, size_t samples_needed) {
+static float *avx_ensure_audio_planar_scratch(avx_send_ctx_t *slot, size_t samples_needed) {
     if (samples_needed > slot->audio_planar_scratch_cap) {
-        float *nb = (float*)realloc(slot->audio_planar_scratch, samples_needed * sizeof(float));
+        float *nb = (float *)realloc(slot->audio_planar_scratch, samples_needed * sizeof(float));
         if (!nb) return NULL;
         slot->audio_planar_scratch = nb;
         slot->audio_planar_scratch_cap = samples_needed;
@@ -1267,9 +1253,9 @@ static float* avx_ensure_audio_planar_scratch(avx_send_ctx_t *slot, size_t sampl
     return slot->audio_planar_scratch;
 }
 
-static uint8_t* avx_ensure_audio_comp_scratch(avx_send_ctx_t *slot) {
+static uint8_t *avx_ensure_audio_comp_scratch(avx_send_ctx_t *slot) {
     if (!slot->audio_comp_scratch) {
-        slot->audio_comp_scratch = (uint8_t*)malloc(65536);
+        slot->audio_comp_scratch = (uint8_t *)malloc(65536);
     }
     return slot->audio_comp_scratch;
 }
@@ -1278,7 +1264,7 @@ static uint8_t* avx_ensure_audio_comp_scratch(avx_send_ctx_t *slot) {
  * Ingests planar float or interleaved float/s16/s32 audio. Evaluates congestion
  * for adaptive Opus/ADPCM compression; otherwise packages uncompressed 32-bit float PCM.
  */
-OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audio_frame_t* p_audio_data) {
+OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audio_frame_t *p_audio_data) {
     if (!p_instance || !p_audio_data) return;
     if (p_audio_data->channels == 0 || p_audio_data->channels > OAVX_MAX_AUDIO_CHANNELS) return;
     if ((unsigned)p_audio_data->format >= OAVX_AUDIO_FMT_COUNT) return;
@@ -1289,7 +1275,7 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
     size_t total_samples = (size_t)channels * (size_t)frames;
     if (total_samples > (size_t)UINT32_MAX / sizeof(float)) return;
 
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     avx_mutex_lock(&slot->lock);
     slot->audio_frames_sent++;
@@ -1309,8 +1295,8 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
             if (slot->clients[i].fd != AVX_INVALID_SOCKET) {
                 avx_mutex_lock(&slot->clients[i].tx_lock);
                 if (slot->clients[i].queue_count == 0 && slot->clients[i].congestion_level > 0) {
-                    slot->clients[i].congestion_level = avx_send_evaluate_client_congestion(
-                        &slot->clients[i], eval_now_ns, est_bytes, 50.0f, NULL);
+                    slot->clients[i].congestion_level =
+                        avx_send_evaluate_client_congestion(&slot->clients[i], eval_now_ns, est_bytes, 50.0f, NULL);
                 }
                 bool client_busy = (slot->clients[i].congestion_level > 0 || slot->clients[i].queue_count > 0);
                 avx_mutex_unlock(&slot->clients[i].tx_lock);
@@ -1341,16 +1327,15 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
             int f_samples = 0;
             int64_t f_pts = 0;
             uint32_t f_fourcc = 0;
-            if (avx_audio_encoder_flush(slot->audio_encoder, comp_buf, 65536,
-                                        &f_size, &f_samples, &f_pts, &f_fourcc)) {
+            if (avx_audio_encoder_flush(slot->audio_encoder, comp_buf, 65536, &f_size, &f_samples, &f_pts, &f_fourcc)) {
                 AVX_PACKED_START
                 struct {
                     uint32_t magic;
                     uint32_t codec_fourcc;
-                    int32_t  sample_rate;
-                    int32_t  channels;
-                    int32_t  samples;
-                    int64_t  timecode;
+                    int32_t sample_rate;
+                    int32_t channels;
+                    int32_t samples;
+                    int64_t timecode;
                     uint32_t payload_len;
                 } AVX_PACKED fhdr;
                 AVX_PACKED_END
@@ -1382,16 +1367,14 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
                     avx_audio_encoder_destroy(slot->audio_encoder);
                 }
                 avx_audio_codec_type_e codec_pref = (channels <= 8) ? AVX_AUDIO_CODEC_OPUS : AVX_AUDIO_CODEC_ADPCM;
-                slot->audio_encoder = avx_audio_encoder_create((int)p_audio_data->sample_rate,
-                                                               (int)channels,
-                                                               codec_pref,
-                                                               target_bitrate_kbps);
+                slot->audio_encoder = avx_audio_encoder_create((int)p_audio_data->sample_rate, (int)channels,
+                                                               codec_pref, target_bitrate_kbps);
                 slot->audio_enc_channels = (int)channels;
                 slot->audio_enc_sample_rate = (int)p_audio_data->sample_rate;
             }
 
             if (slot->audio_encoder) {
-                const float* in_planes[OAVX_MAX_AUDIO_CHANNELS];
+                const float *in_planes[OAVX_MAX_AUDIO_CHANNELS];
                 bool can_zero_copy = false;
 
                 if (p_audio_data->format == OAVX_AUDIO_FMT_FLT_PLANAR) {
@@ -1406,15 +1389,16 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
                     }
                     if (!any_extra) {
                         size_t ch_bytes = (size_t)frames * sizeof(float);
-                        size_t ch_stride = (p_audio_data->stride_bytes >= ch_bytes) ? p_audio_data->stride_bytes : ch_bytes;
-                        const uint8_t *base = (const uint8_t*)p_audio_data->planes[0];
+                        size_t ch_stride =
+                            (p_audio_data->stride_bytes >= ch_bytes) ? p_audio_data->stride_bytes : ch_bytes;
+                        const uint8_t *base = (const uint8_t *)p_audio_data->planes[0];
                         for (uint16_t c = 0; c < channels; ++c) {
-                            in_planes[c] = (const float*)(base + (size_t)c * ch_stride);
+                            in_planes[c] = (const float *)(base + (size_t)c * ch_stride);
                         }
                         can_zero_copy = true;
                     } else if (all_present) {
                         for (uint16_t c = 0; c < channels; ++c) {
-                            in_planes[c] = (const float*)p_audio_data->planes[c];
+                            in_planes[c] = (const float *)p_audio_data->planes[c];
                         }
                         can_zero_copy = true;
                     }
@@ -1439,16 +1423,16 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
                     int64_t out_pts = 0;
                     uint32_t out_fourcc = 0;
 
-                    while (avx_audio_encoder_pull(slot->audio_encoder, comp_buf, 65536,
-                                                  &comp_size, &out_samples, &out_pts, &out_fourcc)) {
+                    while (avx_audio_encoder_pull(slot->audio_encoder, comp_buf, 65536, &comp_size, &out_samples,
+                                                  &out_pts, &out_fourcc)) {
                         AVX_PACKED_START
                         struct {
-                            uint32_t magic;         /* OAVX_WIRE_MAGIC_AUDIO_COMP ('AVXO') */
-                            uint32_t codec_fourcc;  /* 'OPUS' or 'ADPC' */
-                            int32_t  sample_rate;
-                            int32_t  channels;
-                            int32_t  samples;
-                            int64_t  timecode;
+                            uint32_t magic;        /* OAVX_WIRE_MAGIC_AUDIO_COMP ('AVXO') */
+                            uint32_t codec_fourcc; /* 'OPUS' or 'ADPC' */
+                            int32_t sample_rate;
+                            int32_t channels;
+                            int32_t samples;
+                            int64_t timecode;
                             uint32_t payload_len;
                         } AVX_PACKED chdr;
                         AVX_PACKED_END
@@ -1485,10 +1469,10 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
     AVX_PACKED_START
     struct {
         uint32_t magic;
-        int32_t  sample_rate;
-        int32_t  channels;
-        int32_t  samples;
-        int64_t  timecode;
+        int32_t sample_rate;
+        int32_t channels;
+        int32_t samples;
+        int64_t timecode;
         uint32_t payload_len;
     } AVX_PACKED hdr;
     AVX_PACKED_END
@@ -1506,7 +1490,7 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
     if (!pkt) return;
 
     memcpy(pkt->data, &hdr, sizeof(hdr));
-    if (!avx_convert_audio_to_planar_f32(p_audio_data, (float*)(pkt->data + sizeof(hdr)), channels, frames)) {
+    if (!avx_convert_audio_to_planar_f32(p_audio_data, (float *)(pkt->data + sizeof(hdr)), channels, frames)) {
         avx_mutex_lock(&slot->lock);
         avx_tx_release_shared_pkt_locked(pkt);
         avx_mutex_unlock(&slot->lock);
@@ -1518,9 +1502,10 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
     avx_mutex_unlock(&slot->lock);
 }
 
-void avx_tx_set_audio_compression(avx_tx_instance_t p_instance, oavx_audio_compression_mode_e mode, int target_bitrate_kbps) {
+void avx_tx_set_audio_compression(avx_tx_instance_t p_instance, oavx_audio_compression_mode_e mode,
+                                  int target_bitrate_kbps) {
     if (!p_instance) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->audio_enc_lock);
     avx_mutex_lock(&slot->lock);
     slot->audio_comp_mode = mode;
@@ -1542,7 +1527,7 @@ void avx_tx_set_audio_compression(avx_tx_instance_t p_instance, oavx_audio_compr
 
 void avx_tx_set_video_quality(avx_tx_instance_t p_instance, uint8_t quality) {
     if (!p_instance) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     if (quality != 0) {
         if (quality < 20) quality = 20;
         if (quality > 98) quality = 98;
@@ -1557,7 +1542,7 @@ void avx_tx_set_video_quality(avx_tx_instance_t p_instance, uint8_t quality) {
 
 uint8_t avx_tx_get_video_quality(avx_tx_instance_t p_instance) {
     if (!p_instance) return 0;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     uint8_t q = slot->video_quality;
     avx_mutex_unlock(&slot->lock);
@@ -1566,7 +1551,7 @@ uint8_t avx_tx_get_video_quality(avx_tx_instance_t p_instance) {
 
 void avx_tx_set_video_compression(avx_tx_instance_t p_instance, uint32_t target_fourcc, uint32_t bitrate_kbps) {
     if (!p_instance) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     slot->video_codec_fourcc = target_fourcc;
     slot->video_bitrate_kbps = bitrate_kbps;
@@ -1582,16 +1567,16 @@ void avx_tx_set_video_compression(avx_tx_instance_t p_instance, uint32_t target_
 
 uint32_t avx_tx_get_video_compression(avx_tx_instance_t p_instance) {
     if (!p_instance) return 0;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     uint32_t fcc = slot->video_codec_fourcc;
     avx_mutex_unlock(&slot->lock);
     return fcc;
 }
 
-void avx_tx_send_metadata(avx_tx_instance_t p_instance, const oavx_metadata_frame_t* metadata) {
+void avx_tx_send_metadata(avx_tx_instance_t p_instance, const oavx_metadata_frame_t *metadata) {
     if (!p_instance || !metadata || !metadata->data) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     avx_mutex_lock(&slot->lock);
     if (slot->active_clients > 0) {
@@ -1600,7 +1585,7 @@ void avx_tx_send_metadata(avx_tx_instance_t p_instance, const oavx_metadata_fram
         AVX_PACKED_START
         struct {
             uint32_t magic;
-            int64_t  timecode;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED hdr;
         AVX_PACKED_END
@@ -1609,14 +1594,14 @@ void avx_tx_send_metadata(avx_tx_instance_t p_instance, const oavx_metadata_fram
         hdr.timecode = metadata->pts_ns;
         hdr.payload_len = (uint32_t)len;
 
-        avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t*)malloc(sizeof(avx_tx_shared_pkt_t));
+        avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t *)malloc(sizeof(avx_tx_shared_pkt_t));
         if (!pkt) {
             avx_mutex_unlock(&slot->lock);
             return;
         }
 
         pkt->size = sizeof(hdr) + len;
-        pkt->data = (uint8_t*)malloc(pkt->size);
+        pkt->data = (uint8_t *)malloc(pkt->size);
         if (!pkt->data) {
             free(pkt);
             avx_mutex_unlock(&slot->lock);
@@ -1672,11 +1657,12 @@ void avx_tx_send_metadata(avx_tx_instance_t p_instance, const oavx_metadata_fram
 
             /* Write to PCAP */
             size_t snap_len = sizeof(hdr) + len;
-            uint8_t *snap = (uint8_t*)malloc(snap_len);
+            uint8_t *snap = (uint8_t *)malloc(snap_len);
             if (snap) {
                 memcpy(snap, &hdr, sizeof(hdr));
                 memcpy(snap + sizeof(hdr), metadata->data, len);
-                avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 300, 1, 0x18, snap, snap_len);
+                avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 300, 1, 0x18, snap,
+                                   snap_len);
                 free(snap);
             }
         }
@@ -1684,9 +1670,9 @@ void avx_tx_send_metadata(avx_tx_instance_t p_instance, const oavx_metadata_fram
     avx_mutex_unlock(&slot->lock);
 }
 
-bool avx_tx_get_tally(avx_tx_instance_t p_instance, oavx_tally_t* p_tally, uint32_t timeout_in_ms) {
+bool avx_tx_get_tally(avx_tx_instance_t p_instance, oavx_tally_t *p_tally, uint32_t timeout_in_ms) {
     if (!p_instance || !p_tally) return false;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     avx_mutex_lock(&slot->lock);
     if (timeout_in_ms > 0 && !(slot->tally.flags & (OAVX_TALLY_PROGRAM | OAVX_TALLY_PREVIEW | OAVX_TALLY_RECORDING))) {
@@ -1697,50 +1683,44 @@ bool avx_tx_get_tally(avx_tx_instance_t p_instance, oavx_tally_t* p_tally, uint3
     return true;
 }
 
-bool avx_tx_set_tally(avx_tx_instance_t p_instance, const oavx_tally_t* p_tally) {
+bool avx_tx_set_tally(avx_tx_instance_t p_instance, const oavx_tally_t *p_tally) {
     if (!p_instance || !p_tally) return false;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     avx_mutex_lock(&slot->lock);
     slot->tally = *p_tally;
     avx_cond_broadcast(&slot->tally_cond);
     if (slot->web_server) {
-        avx_web_server_broadcast_tally((avx_web_server_t*)slot->web_server, &slot->tally);
+        avx_web_server_broadcast_tally((avx_web_server_t *)slot->web_server, &slot->tally);
     }
 
     char tally_xml[256];
-    int len = snprintf(tally_xml, sizeof(tally_xml),
-        "<%s on_program=\"%s\" on_preview=\"%s\" on_recording=\"%s\"/>\n",
-        slot->wire_profile.tally_tag ? slot->wire_profile.tally_tag : OAVX_WIRE_TALLY_TAG,
-        (p_tally->flags & OAVX_TALLY_PROGRAM) ? "true" : "false",
-        (p_tally->flags & OAVX_TALLY_PREVIEW) ? "true" : "false",
-        (p_tally->flags & OAVX_TALLY_RECORDING) ? "true" : "false");
+    int len = snprintf(tally_xml, sizeof(tally_xml), "<%s on_program=\"%s\" on_preview=\"%s\" on_recording=\"%s\"/>\n",
+                       slot->wire_profile.tally_tag ? slot->wire_profile.tally_tag : OAVX_WIRE_TALLY_TAG,
+                       (p_tally->flags & OAVX_TALLY_PROGRAM) ? "true" : "false",
+                       (p_tally->flags & OAVX_TALLY_PREVIEW) ? "true" : "false",
+                       (p_tally->flags & OAVX_TALLY_RECORDING) ? "true" : "false");
     avx_mutex_unlock(&slot->lock);
 
-    oavx_metadata_frame_t meta = {
-        .length = (size_t)len,
-        .pts_ns = 0,
-        .data = tally_xml
-    };
+    oavx_metadata_frame_t meta = {.length = (size_t)len, .pts_ns = 0, .data = tally_xml};
     avx_tx_send_metadata(p_instance, &meta);
     return true;
 }
 
 void avx_tx_clear_connection_metadata(avx_tx_instance_t p_instance) {
     if (!p_instance) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     slot->num_conn_metadata = 0;
     avx_mutex_unlock(&slot->lock);
 }
 
-void avx_tx_add_connection_metadata(avx_tx_instance_t p_instance, const oavx_metadata_frame_t* metadata) {
+void avx_tx_add_connection_metadata(avx_tx_instance_t p_instance, const oavx_metadata_frame_t *metadata) {
     if (!p_instance || !metadata || !metadata->data) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     if (slot->num_conn_metadata < 16) {
-        snprintf(slot->conn_metadata[slot->num_conn_metadata],
-                 sizeof(slot->conn_metadata[0]), "%s", metadata->data);
+        snprintf(slot->conn_metadata[slot->num_conn_metadata], sizeof(slot->conn_metadata[0]), "%s", metadata->data);
         slot->num_conn_metadata++;
     }
     avx_mutex_unlock(&slot->lock);
@@ -1750,9 +1730,9 @@ void avx_tx_add_connection_metadata(avx_tx_instance_t p_instance, const oavx_met
  * Configures secondary backup endpoint and broadcasts failover XML descriptor
  * to all connected receivers for instant client-side switchover on disconnect.
  */
-void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t* p_failover_source) {
+void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t *p_failover_source) {
     if (!p_instance) return;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
 
     /* Remove any existing failover metadata from conn_metadata */
@@ -1760,8 +1740,7 @@ void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t* p_
     for (size_t r = 0; r < slot->num_conn_metadata; ++r) {
         if (strstr(slot->conn_metadata[r], "failover") == NULL) {
             if (w != r) {
-                snprintf(slot->conn_metadata[w], sizeof(slot->conn_metadata[0]),
-                         "%s", slot->conn_metadata[r]);
+                snprintf(slot->conn_metadata[w], sizeof(slot->conn_metadata[0]), "%s", slot->conn_metadata[r]);
             }
             w++;
         }
@@ -1785,14 +1764,12 @@ void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t* p_
 
         /* Build XML failover metadata packet */
         char meta_xml[512];
-        snprintf(meta_xml, sizeof(meta_xml),
-                 "<openavx_failover name=\"%s\" address=\"%s\"/>\n",
-                 slot->failover_name, slot->failover_url);
+        snprintf(meta_xml, sizeof(meta_xml), "<openavx_failover name=\"%s\" address=\"%s\"/>\n", slot->failover_name,
+                 slot->failover_url);
 
         /* Add to conn_metadata for future receivers */
         if (slot->num_conn_metadata < 16) {
-            snprintf(slot->conn_metadata[slot->num_conn_metadata],
-                     sizeof(slot->conn_metadata[0]), "%s", meta_xml);
+            snprintf(slot->conn_metadata[slot->num_conn_metadata], sizeof(slot->conn_metadata[0]), "%s", meta_xml);
             slot->num_conn_metadata++;
         }
 
@@ -1801,7 +1778,7 @@ void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t* p_
         AVX_PACKED_START
         struct {
             uint32_t magic;
-            int64_t  timecode;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED mhdr;
         AVX_PACKED_END
@@ -1811,7 +1788,7 @@ void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t* p_
 
         for (int i = 0; i < slot->max_clients; ++i) {
             if (slot->clients[i].fd != AVX_INVALID_SOCKET) {
-                send(slot->clients[i].fd, (const char*)&mhdr, sizeof(mhdr), MSG_NOSIGNAL);
+                send(slot->clients[i].fd, (const char *)&mhdr, sizeof(mhdr), MSG_NOSIGNAL);
                 send(slot->clients[i].fd, meta_xml, mlen, MSG_NOSIGNAL);
             }
         }
@@ -1826,7 +1803,7 @@ void avx_tx_set_failover(avx_tx_instance_t p_instance, const oavx_endpoint_t* p_
 
 int avx_tx_get_connection_count(avx_tx_instance_t p_instance, uint32_t timeout_in_ms) {
     if (!p_instance) return 0;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     uint32_t elapsed = 0;
     while (1) {
         avx_mutex_lock(&slot->lock);
@@ -1840,26 +1817,23 @@ int avx_tx_get_connection_count(avx_tx_instance_t p_instance, uint32_t timeout_i
     }
 }
 
-OPENAVX_API const oavx_endpoint_t* avx_tx_get_source(avx_tx_instance_t p_instance) {
+OPENAVX_API const oavx_endpoint_t *avx_tx_get_source(avx_tx_instance_t p_instance) {
     if (!p_instance) return NULL;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     return &slot->source_info;
 }
 
-oavx_frame_type_t avx_tx_capture_metadata(
-    avx_tx_instance_t p_instance,
-    oavx_metadata_frame_t* metadata,
-    uint32_t timeout_in_ms
-) {
+oavx_frame_type_t avx_tx_capture_metadata(avx_tx_instance_t p_instance, oavx_metadata_frame_t *metadata,
+                                          uint32_t timeout_in_ms) {
     if (!p_instance || !metadata) return OAVX_FRAME_TYPE_ERROR;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
 
     uint32_t elapsed = 0;
     while (elapsed <= timeout_in_ms) {
         avx_mutex_lock(&slot->lock);
         if (slot->has_new_metadata) {
             size_t len = strlen(slot->last_metadata);
-            char* buf = (char*)malloc(len + 1);
+            char *buf = (char *)malloc(len + 1);
             if (buf) {
                 memcpy(buf, slot->last_metadata, len + 1);
                 metadata->data = buf;
@@ -1880,10 +1854,7 @@ oavx_frame_type_t avx_tx_capture_metadata(
     return OAVX_FRAME_TYPE_NONE;
 }
 
-void avx_tx_free_metadata(
-    avx_tx_instance_t p_instance,
-    const oavx_metadata_frame_t* metadata
-) {
+void avx_tx_free_metadata(avx_tx_instance_t p_instance, const oavx_metadata_frame_t *metadata) {
     (void)p_instance;
     if (!metadata) return;
     if (metadata->data) {
@@ -1893,7 +1864,7 @@ void avx_tx_free_metadata(
 
 OPENAVX_API bool avx_tx_get_telemetry(avx_tx_instance_t p_instance, oavx_telemetry_t *out) {
     if (!p_instance || !out) return false;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     memset(out, 0, sizeof(*out));
 
     avx_mutex_lock(&slot->lock);
@@ -1902,7 +1873,8 @@ OPENAVX_API bool avx_tx_get_telemetry(avx_tx_instance_t p_instance, oavx_telemet
     float fps = slot->telem.instant_fps;
     float mbps = slot->telem.instant_mbps;
 
-    if (slot->telem.last_window_time_ns > 0 && (now_ns - slot->telem.last_window_time_ns) > 1000000000LL && slot->telem.window_frames == 0) {
+    if (slot->telem.last_window_time_ns > 0 && (now_ns - slot->telem.last_window_time_ns) > 1000000000LL &&
+        slot->telem.window_frames == 0) {
         fps = 0.0f;
         mbps = 0.0f;
     } else if (fps == 0.0f && slot->telem.window_frames > 0 && slot->telem.last_window_time_ns > 0) {
@@ -1925,19 +1897,19 @@ OPENAVX_API bool avx_tx_get_telemetry(avx_tx_instance_t p_instance, oavx_telemet
         }
     }
 
-    out->video_frames_total    = slot->video_frames_sent;
-    out->audio_frames_total    = slot->audio_frames_sent;
+    out->video_frames_total = slot->video_frames_sent;
+    out->audio_frames_total = slot->audio_frames_sent;
     out->metadata_frames_total = slot->metadata_frames_sent;
-    out->dropped_frames_total  = total_dropped;
-    out->fps                   = fps;
-    out->bitrate_mbps          = mbps;
-    out->total_wire_bytes      = slot->telem.total_bytes;
+    out->dropped_frames_total = total_dropped;
+    out->fps = fps;
+    out->bitrate_mbps = mbps;
+    out->total_wire_bytes = slot->telem.total_bytes;
     out->inter_frame_jitter_ms = 0.0f;
-    out->fourcc                = slot->telem.last_fourcc;
-    out->width                 = slot->telem.last_width;
-    out->height                = slot->telem.last_height;
-    out->is_connected          = (slot->active_clients > 0);
-    out->congestion_level      = max_congestion;
+    out->fourcc = slot->telem.last_fourcc;
+    out->width = slot->telem.last_width;
+    out->height = slot->telem.last_height;
+    out->is_connected = (slot->active_clients > 0);
+    out->congestion_level = max_congestion;
 
     if (slot->url[0]) {
         snprintf(out->remote_endpoint, sizeof(out->remote_endpoint), "%.127s", slot->url);
@@ -1952,7 +1924,7 @@ OPENAVX_API bool avx_tx_get_telemetry(avx_tx_instance_t p_instance, oavx_telemet
 
     if (tx_transport == OAVX_TRANSPORT_RUDP && rudp_s) {
         avx_rudp_telemetry_t r_telem;
-        if (avx_udp_rudp_sender_get_telemetry((avx_udp_rudp_sender_t*)rudp_s, &r_telem)) {
+        if (avx_udp_rudp_sender_get_telemetry((avx_udp_rudp_sender_t *)rudp_s, &r_telem)) {
             out->kernel_rtt_ms = (float)r_telem.srtt_ms;
             out->tcp_retransmissions = (uint32_t)r_telem.packets_retransmitted;
         }
@@ -1964,15 +1936,15 @@ OPENAVX_API bool avx_tx_get_telemetry(avx_tx_instance_t p_instance, oavx_telemet
     return true;
 }
 
-OPENAVX_API struct avx_rate_controller_t* avx_tx_get_rate_controller(avx_tx_instance_t p_instance) {
+OPENAVX_API struct avx_rate_controller_t *avx_tx_get_rate_controller(avx_tx_instance_t p_instance) {
     if (!p_instance) return NULL;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     return slot->rate_ctl;
 }
 
 OPENAVX_API int avx_tx_get_wan_client_count(avx_tx_instance_t p_instance) {
     if (!p_instance) return 0;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     int count = slot->wan_client_count;
     avx_mutex_unlock(&slot->lock);
@@ -1981,7 +1953,7 @@ OPENAVX_API int avx_tx_get_wan_client_count(avx_tx_instance_t p_instance) {
 
 OPENAVX_API uint32_t avx_tx_get_wan_codec_fourcc(avx_tx_instance_t p_instance) {
     if (!p_instance) return 0;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     uint32_t fourcc = slot->wan_codec_fourcc;
     avx_mutex_unlock(&slot->lock);
@@ -1990,7 +1962,7 @@ OPENAVX_API uint32_t avx_tx_get_wan_codec_fourcc(avx_tx_instance_t p_instance) {
 
 OPENAVX_API bool avx_tx_is_wan_encoder_active(avx_tx_instance_t p_instance) {
     if (!p_instance) return false;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     bool active = (slot->wan_encoder != NULL);
     avx_mutex_unlock(&slot->lock);
@@ -2003,7 +1975,7 @@ OPENAVX_API bool avx_tx_is_wan_encoder_active(avx_tx_instance_t p_instance) {
  */
 OPENAVX_API bool avx_tx_set_client_profile(avx_tx_instance_t p_instance, int client_idx, const char *profile) {
     if (!p_instance || !profile || client_idx < 0 || client_idx >= AVX_MAX_CLIENTS) return false;
-    avx_send_ctx_t* slot = (avx_send_ctx_t*)p_instance;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)p_instance;
     avx_mutex_lock(&slot->lock);
     if (slot->clients[client_idx].fd == AVX_INVALID_SOCKET) {
         avx_mutex_unlock(&slot->lock);
@@ -2017,8 +1989,8 @@ OPENAVX_API bool avx_tx_set_client_profile(avx_tx_instance_t p_instance, int cli
         slot->wan_client_count++;
         if (slot->wan_codec_fourcc == 0) {
             slot->wan_codec_fourcc = slot->clients[client_idx].negotiated_codec_fourcc
-                ? slot->clients[client_idx].negotiated_codec_fourcc
-                : OAVX_FOURCC_VIDEO_TYPE_H264;
+                                         ? slot->clients[client_idx].negotiated_codec_fourcc
+                                         : OAVX_FOURCC_VIDEO_TYPE_H264;
         }
         if (slot->wan_encoder) {
             avx_video_encoder_request_keyframe(slot->wan_encoder);

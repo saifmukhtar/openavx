@@ -745,6 +745,7 @@ typedef struct avx_avcodec_enc_ctx_t {
     bool force_idr_next;
     char encoder_name[64];
     bool is_hardware;
+    int enc_pix_fmt;
     uint8_t *tmp_buf;
     size_t tmp_cap;
 } avx_avcodec_enc_ctx_t;
@@ -870,68 +871,79 @@ static int avcodec_enc_create(const avx_video_enc_cfg_t *cfg, void **backend_ctx
     }
     uint32_t gop = cfg->keyframe_interval > 0 ? cfg->keyframe_interval : 60;
 
-    int cand_idx = 0;
-    while (1) {
-        const char *cand_name = (cands && cands[cand_idx]) ? cands[cand_idx] : NULL;
-        if (cand_name) {
-            cand_idx++;
-            if (!g_avcodec.avcodec_find_encoder_by_name) continue;
-            enc = g_avcodec.avcodec_find_encoder_by_name(cand_name);
-            if (!enc) continue;
-            snprintf(chosen_name, sizeof(chosen_name), "%s", cand_name);
-        } else if (fallback_codec_id != 0 && g_avcodec.avcodec_find_encoder) {
-            enc = g_avcodec.avcodec_find_encoder(fallback_codec_id);
-            fallback_codec_id = 0;
-            if (!enc) break;
-            snprintf(chosen_name, sizeof(chosen_name), "default");
-        } else {
-            break;
+    bool want_10bit =
+        ((cfg->src_fourcc == OAVX_FOURCC_VIDEO_TYPE_P216 || cfg->src_fourcc == OAVX_FOURCC_VIDEO_TYPE_PA16) &&
+         (cfg->fourcc == OAVX_FOURCC_VIDEO_TYPE_HEVC || cfg->fourcc == OAVX_FOURCC_VIDEO_TYPE_AV01) &&
+         g_avcodec.fmt_yuv420p10le >= 0);
+    int chosen_pix_fmt = want_10bit ? g_avcodec.fmt_yuv420p10le : g_avcodec.fmt_yuv420p;
+
+    for (int pass = 0; pass < (want_10bit ? 2 : 1) && !avctx; ++pass) {
+        int try_pix_fmt = (pass == 0) ? chosen_pix_fmt : g_avcodec.fmt_yuv420p;
+        int try_fallback_id = fallback_codec_id;
+        int cand_idx = 0;
+        while (1) {
+            const char *cand_name = (cands && cands[cand_idx]) ? cands[cand_idx] : NULL;
+            if (cand_name) {
+                cand_idx++;
+                if (!g_avcodec.avcodec_find_encoder_by_name) continue;
+                enc = g_avcodec.avcodec_find_encoder_by_name(cand_name);
+                if (!enc) continue;
+                snprintf(chosen_name, sizeof(chosen_name), "%s", cand_name);
+            } else if (try_fallback_id != 0 && g_avcodec.avcodec_find_encoder) {
+                enc = g_avcodec.avcodec_find_encoder(try_fallback_id);
+                try_fallback_id = 0;
+                if (!enc) break;
+                snprintf(chosen_name, sizeof(chosen_name), "default");
+            } else {
+                break;
+            }
+
+            avctx = g_avcodec.avcodec_alloc_context3(enc);
+            if (!avctx) continue;
+
+            g_avcodec.av_opt_set(avctx, "video_size", size_str, 0);
+            g_avcodec.av_opt_set_int(avctx, "pixel_format", try_pix_fmt, 0);
+            g_avcodec.av_opt_set(avctx, "time_base", tb_str, 0);
+            g_avcodec.av_opt_set(avctx, "framerate", fr_str, 0);
+            g_avcodec.av_opt_set_int(avctx, "b", (int64_t)br_kbps * 1000LL, 0);
+            g_avcodec.av_opt_set_int(avctx, "g", gop, 0);
+            g_avcodec.av_opt_set_int(avctx, "bf", 0, 0);
+
+            if (strstr(chosen_name, "nvenc")) {
+                is_hw = true;
+                g_avcodec.av_opt_set(avctx, "preset", "p1", 1);
+                g_avcodec.av_opt_set(avctx, "tune", "ull", 1);
+                g_avcodec.av_opt_set_int(avctx, "zerolatency", 1, 1);
+                g_avcodec.av_opt_set_int(avctx, "delay", 0, 1);
+            } else if (strstr(chosen_name, "qsv")) {
+                is_hw = true;
+                g_avcodec.av_opt_set(avctx, "preset", "veryfast", 1);
+                g_avcodec.av_opt_set_int(avctx, "async_depth", 1, 1);
+            } else if (strstr(chosen_name, "amf")) {
+                is_hw = true;
+                g_avcodec.av_opt_set(avctx, "usage", "lowlatency", 1);
+                g_avcodec.av_opt_set(avctx, "quality", "speed", 1);
+            } else {
+                is_hw = false;
+                g_avcodec.av_opt_set(avctx, "preset", "ultrafast", 1);
+                g_avcodec.av_opt_set(avctx, "tune", "zerolatency", 1);
+            }
+            g_avcodec.av_opt_set(avctx, "forced-idr", "1", 1);
+
+            int open_rc = g_avcodec.avcodec_open2(avctx, enc, NULL);
+            if (open_rc == 0) {
+                chosen_pix_fmt = try_pix_fmt;
+                oavx_log_write(OAVX_LOG_INFO, "avcodec", "Selected %s %s encoder for %ux%u @ %u kbps (fmt=%d)",
+                               is_hw ? "Hardware" : "Software", chosen_name, (unsigned)cfg->width,
+                               (unsigned)cfg->height, (unsigned)br_kbps, chosen_pix_fmt);
+                break;
+            }
+
+            /* If opening this candidate failed (e.g. resolution or 10-bit not supported), try next */
+            g_avcodec.avcodec_free_context(&avctx);
+            avctx = NULL;
+            enc = NULL;
         }
-
-        avctx = g_avcodec.avcodec_alloc_context3(enc);
-        if (!avctx) continue;
-
-        g_avcodec.av_opt_set(avctx, "video_size", size_str, 0);
-        g_avcodec.av_opt_set_int(avctx, "pixel_format", g_avcodec.fmt_yuv420p, 0);
-        g_avcodec.av_opt_set(avctx, "time_base", tb_str, 0);
-        g_avcodec.av_opt_set(avctx, "framerate", fr_str, 0);
-        g_avcodec.av_opt_set_int(avctx, "b", (int64_t)br_kbps * 1000LL, 0);
-        g_avcodec.av_opt_set_int(avctx, "g", gop, 0);
-        g_avcodec.av_opt_set_int(avctx, "bf", 0, 0);
-
-        if (strstr(chosen_name, "nvenc")) {
-            is_hw = true;
-            g_avcodec.av_opt_set(avctx, "preset", "p1", 1);
-            g_avcodec.av_opt_set(avctx, "tune", "ull", 1);
-            g_avcodec.av_opt_set_int(avctx, "zerolatency", 1, 1);
-            g_avcodec.av_opt_set_int(avctx, "delay", 0, 1);
-        } else if (strstr(chosen_name, "qsv")) {
-            is_hw = true;
-            g_avcodec.av_opt_set(avctx, "preset", "veryfast", 1);
-            g_avcodec.av_opt_set_int(avctx, "async_depth", 1, 1);
-        } else if (strstr(chosen_name, "amf")) {
-            is_hw = true;
-            g_avcodec.av_opt_set(avctx, "usage", "lowlatency", 1);
-            g_avcodec.av_opt_set(avctx, "quality", "speed", 1);
-        } else {
-            is_hw = false;
-            g_avcodec.av_opt_set(avctx, "preset", "ultrafast", 1);
-            g_avcodec.av_opt_set(avctx, "tune", "zerolatency", 1);
-        }
-        g_avcodec.av_opt_set(avctx, "forced-idr", "1", 1);
-
-        int open_rc = g_avcodec.avcodec_open2(avctx, enc, NULL);
-        if (open_rc == 0) {
-            oavx_log_write(OAVX_LOG_INFO, "avcodec", "Selected %s %s encoder for %ux%u @ %u kbps",
-                           is_hw ? "Hardware" : "Software", chosen_name, (unsigned)cfg->width, (unsigned)cfg->height,
-                           (unsigned)br_kbps);
-            break;
-        }
-
-        /* If opening this candidate failed (e.g. resolution not supported by ASIC or GPU busy), try next */
-        g_avcodec.avcodec_free_context(&avctx);
-        avctx = NULL;
-        enc = NULL;
     }
 
     if (!avctx || !enc) {
@@ -958,6 +970,7 @@ static int avcodec_enc_create(const avx_video_enc_cfg_t *cfg, void **backend_ctx
     ctx->force_idr_next = true;
     snprintf(ctx->encoder_name, sizeof(ctx->encoder_name), "%s (%s)", chosen_name, is_hw ? "Hardware" : "Software");
     ctx->is_hardware = is_hw;
+    ctx->enc_pix_fmt = chosen_pix_fmt;
 
     ctx->frame = g_avcodec.av_frame_alloc();
     if (!ctx->frame) {
@@ -968,7 +981,7 @@ static int avcodec_enc_create(const avx_video_enc_cfg_t *cfg, void **backend_ctx
     avx_av_frame_stub_t *f = (avx_av_frame_stub_t *)ctx->frame;
     f->width = (int)cfg->width;
     f->height = (int)cfg->height;
-    f->format = g_avcodec.fmt_yuv420p;
+    f->format = ctx->enc_pix_fmt;
 
     int buf_rc = g_avcodec.av_frame_get_buffer(ctx->frame, 32);
     if (buf_rc < 0) {
@@ -1021,7 +1034,35 @@ static int avcodec_enc_prepare_input(avx_avcodec_enc_ctx_t *ctx, const oavx_vide
         return 0;
     }
 
-    if (src_fourcc == OAVX_FOURCC_VIDEO_TYPE_P216) {
+    if (src_fourcc == OAVX_FOURCC_VIDEO_TYPE_P216 || src_fourcc == OAVX_FOURCC_VIDEO_TYPE_PA16) {
+        if (f->format == g_avcodec.fmt_yuv420p10le && g_avcodec.fmt_yuv420p10le >= 0) {
+            size_t ys_bytes = in_frame->strides[0] ? in_frame->strides[0] : (size_t)w * 2;
+            size_t uvs_bytes = in_frame->strides[1] ? in_frame->strides[1] : ys_bytes;
+            const uint8_t *src_y_base = in_frame->planes[0];
+            const uint8_t *src_uv_base =
+                in_frame->planes[1] ? in_frame->planes[1] : (src_y_base + ys_bytes * (size_t)h);
+
+            for (uint32_t r = 0; r < h; ++r) {
+                const uint16_t *sy = (const uint16_t *)(src_y_base + r * ys_bytes);
+                uint16_t *dy = (uint16_t *)(f->data[0] + r * (size_t)f->linesize[0]);
+                for (uint32_t c = 0; c < w; ++c) {
+                    dy[c] = (uint16_t)(sy[c] >> 6);
+                }
+            }
+            for (uint32_t r = 0; r < h / 2; ++r) {
+                const uint16_t *suv0 = (const uint16_t *)(src_uv_base + (2 * r) * uvs_bytes);
+                const uint16_t *suv1 = (const uint16_t *)(src_uv_base + (2 * r + 1) * uvs_bytes);
+                uint16_t *du = (uint16_t *)(f->data[1] + r * (size_t)f->linesize[1]);
+                uint16_t *dv = (uint16_t *)(f->data[2] + r * (size_t)f->linesize[2]);
+                for (uint32_t c = 0; c < w / 2; ++c) {
+                    uint32_t u = (((uint32_t)suv0[c * 2] + (uint32_t)suv1[c * 2] + 1U) >> 1) >> 6;
+                    uint32_t v = (((uint32_t)suv0[c * 2 + 1] + (uint32_t)suv1[c * 2 + 1] + 1U) >> 1) >> 6;
+                    du[c] = (uint16_t)u;
+                    dv[c] = (uint16_t)v;
+                }
+            }
+            return 0;
+        }
         size_t needed = (size_t)w * (size_t)h * 2;
         if (ctx->tmp_cap < needed) {
             uint8_t *nb = (uint8_t *)realloc(ctx->tmp_buf, needed);
