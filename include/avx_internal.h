@@ -380,6 +380,10 @@ struct avx_send_ctx_t {
     bool                          audio_comp_active;
     int                           audio_enc_channels;
     int                           audio_enc_sample_rate;
+    avx_mutex_t                   audio_enc_lock;
+    float                        *audio_planar_scratch;
+    size_t                        audio_planar_scratch_cap;
+    uint8_t                      *audio_comp_scratch;
 
     /* Per-Stream Video Encoder Subsystem */
     avx_video_encoder_t          *video_encoder;
