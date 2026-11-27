@@ -358,7 +358,7 @@ void avx_sync_capture_audio(
                 avx_resampler_destroy(fs->p_resampler);
             }
             fs->p_resampler = avx_resampler_create(
-                fs->source_sample_rate, target_rate, target_channels, AVX_AUDIO_RESAMPLE_CUBIC
+                fs->source_sample_rate, target_rate, target_channels, AVX_AUDIO_RESAMPLE_SINC
             );
             fs->resampler_in_rate = fs->source_sample_rate;
             fs->resampler_out_rate = target_rate;
