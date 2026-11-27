@@ -81,20 +81,26 @@ void avx_send_recalculate_tally_locked(avx_send_ctx_t* slot) {
 void avx_send_remove_client_locked(avx_send_ctx_t* slot, int index) {
     if (index < 0 || index >= AVX_MAX_CLIENTS) return;
     if (slot->clients[index].fd != AVX_INVALID_SOCKET) {
-        shutdown(slot->clients[index].fd, AVX_SHUT_RDWR);
-        avx_socket_close(slot->clients[index].fd);
-        slot->clients[index].fd = AVX_INVALID_SOCKET;
+        avx_socket_t old_fd = slot->clients[index].fd;
+        shutdown(old_fd, AVX_SHUT_RDWR);
         slot->clients[index].tally.flags = OAVX_TALLY_NONE;
         slot->clients[index].connected_time_ns = 0;
         if (slot->active_clients > 0) {
             slot->active_clients--;
         }
 
-        /* Signal client's async tx_worker to stop */
+        /* Clear fd and signal client's async tx_worker under tx_lock; defer close until workers exit */
         avx_mutex_lock(&slot->clients[index].tx_lock);
+        slot->clients[index].fd = AVX_INVALID_SOCKET;
         slot->clients[index].tx_running = false;
         avx_cond_broadcast(&slot->clients[index].tx_cond);
         avx_mutex_unlock(&slot->clients[index].tx_lock);
+
+        if (slot->clients[index].pending_close_fd == AVX_INVALID_SOCKET) {
+            slot->clients[index].pending_close_fd = old_fd;
+        } else {
+            avx_socket_close(old_fd);
+        }
     }
 
     if (slot->clients[index].is_wan_registered) {
@@ -126,7 +132,11 @@ void* avx_send_nack_service_worker(void* arg) {
     avx_send_ctx_t* slot = (avx_send_ctx_t*)arg;
     if (!slot) return NULL;
     int64_t last_rc_tick_ms = 0;
-    while (slot->running && slot->nack_thread_running) {
+    while (1) {
+        avx_mutex_lock(&slot->lock);
+        bool keep_running = (slot->running && slot->nack_thread_running);
+        avx_mutex_unlock(&slot->lock);
+        if (!keep_running) break;
         if (slot->rudp_sender) {
             avx_udp_rudp_sender_service_nacks(slot->rudp_sender);
         }
@@ -361,6 +371,9 @@ void* avx_send_client_tx_worker(void* arg) {
 
     /* Drain any remaining queue items upon thread exit */
     avx_client_queue_drain(slot, client);
+    avx_mutex_lock(&slot->lock);
+    client->tx_exited = true;
+    avx_mutex_unlock(&slot->lock);
     return NULL;
 }
 
@@ -368,14 +381,23 @@ void* avx_send_client_tx_worker(void* arg) {
 void* avx_send_client_rx_worker(void* arg) {
     avx_send_ctx_t* slot = (avx_send_ctx_t*)arg;
 
-    while (slot->running && slot->client_rx_running) {
+    while (1) {
         avx_pollfd_t pfds[AVX_MAX_CLIENTS];
         int client_indices[AVX_MAX_CLIENTS];
+        avx_socket_t reap_fds[AVX_MAX_CLIENTS];
+        int nreap = 0;
         int nfds = 0;
 
         avx_mutex_lock(&slot->lock);
+        bool keep_running = (slot->running && slot->client_rx_running);
         for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
-            if (slot->clients[i].fd != AVX_INVALID_SOCKET) {
+            if (slot->clients[i].fd == AVX_INVALID_SOCKET &&
+                slot->clients[i].pending_close_fd != AVX_INVALID_SOCKET &&
+                (slot->clients[i].tx_exited || !slot->clients[i].tx_thread_active)) {
+                reap_fds[nreap++] = slot->clients[i].pending_close_fd;
+                slot->clients[i].pending_close_fd = AVX_INVALID_SOCKET;
+            }
+            if (keep_running && slot->clients[i].fd != AVX_INVALID_SOCKET) {
                 pfds[nfds].fd = slot->clients[i].fd;
                 pfds[nfds].events = POLLIN;
                 pfds[nfds].revents = 0;
@@ -384,6 +406,11 @@ void* avx_send_client_rx_worker(void* arg) {
             }
         }
         avx_mutex_unlock(&slot->lock);
+
+        for (int r = 0; r < nreap; ++r) {
+            avx_socket_close(reap_fds[r]);
+        }
+        if (!keep_running) break;
 
         if (nfds == 0) {
             avx_sleep_ms(20);
@@ -579,20 +606,25 @@ void* avx_send_client_rx_worker(void* arg) {
 void* avx_send_listen_worker(void* arg) {
     avx_send_ctx_t* slot = (avx_send_ctx_t*)arg;
 
-    while (slot->running) {
+    while (1) {
         avx_socket_t listen_fd;
         avx_mutex_lock(&slot->lock);
+        bool keep_running = slot->running;
         listen_fd = slot->tcp_listen_fd;
+        int64_t now_ns = avx_time_ns();
+        bool do_mdns = (keep_running &&
+                        (slot->last_mdns_broadcast_ns == 0 ||
+                         (now_ns - slot->last_mdns_broadcast_ns) > 30000000000LL));
+        if (do_mdns) {
+            slot->last_mdns_broadcast_ns = now_ns;
+        }
         avx_mutex_unlock(&slot->lock);
 
-        if (listen_fd == AVX_INVALID_SOCKET || !slot->running) {
+        if (listen_fd == AVX_INVALID_SOCKET || !keep_running) {
             break;
         }
 
-        /* Periodic mDNS announcement refresh (every 30 seconds) */
-        int64_t now_ns = avx_time_ns();
-        if (slot->last_mdns_broadcast_ns == 0 || (now_ns - slot->last_mdns_broadcast_ns) > 30000000000LL) {
-            slot->last_mdns_broadcast_ns = now_ns;
+        if (do_mdns) {
             avx_mdns_broadcast_source_ex(slot->name, slot->port, slot->advertised_ip);
         }
 
@@ -614,13 +646,14 @@ void* avx_send_listen_worker(void* arg) {
             continue;
         }
 
-        if (!slot->running) break;
-
         struct sockaddr_storage client_addr;
         avx_socklen_t client_len = sizeof(client_addr);
         avx_socket_t client_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_len);
         if (client_fd == AVX_INVALID_SOCKET) {
-            if (!slot->running) break;
+            avx_mutex_lock(&slot->lock);
+            bool still_running = slot->running;
+            avx_mutex_unlock(&slot->lock);
+            if (!still_running) break;
             avx_sleep_ms(10);
             continue;
         }
@@ -687,11 +720,6 @@ void* avx_send_listen_worker(void* arg) {
             avx_client_queue_drain(slot, &slot->clients[assigned_slot]);
         }
 
-        if (!slot->running) {
-            avx_socket_close(client_fd);
-            break;
-        }
-
         /* Now acquire lock and safely initialize the slot for the new client */
         avx_mutex_lock(&slot->lock);
         if (!slot->running) {
@@ -700,6 +728,10 @@ void* avx_send_listen_worker(void* arg) {
             break;
         }
 
+        if (slot->clients[assigned_slot].pending_close_fd != AVX_INVALID_SOCKET) {
+            avx_socket_close(slot->clients[assigned_slot].pending_close_fd);
+            slot->clients[assigned_slot].pending_close_fd = AVX_INVALID_SOCKET;
+        }
         slot->clients[assigned_slot].fd = client_fd;
         slot->clients[assigned_slot].addr = client_addr;
         slot->clients[assigned_slot].connected_time_ns = avx_time_ns();
@@ -749,6 +781,7 @@ void* avx_send_listen_worker(void* arg) {
         slot->clients[assigned_slot].last_rtt_ms = 0.0f;
         slot->clients[assigned_slot].last_rtt_sample_ns = 0;
         slot->clients[assigned_slot].tx_running = true;
+        slot->clients[assigned_slot].tx_exited = false;
         avx_mutex_unlock(&slot->clients[assigned_slot].tx_lock);
 
         /* Start reverse reader worker if not running */
@@ -872,19 +905,23 @@ bool avx_send_start_listener(avx_send_ctx_t* send_ctx) {
 
 OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send_ctx) {
     if (!send_ctx) return;
+    avx_socket_t close_client_fds[AVX_MAX_CLIENTS];
+    avx_socket_t close_listen_fd = AVX_INVALID_SOCKET;
+    for (int i = 0; i < AVX_MAX_CLIENTS; ++i) close_client_fds[i] = AVX_INVALID_SOCKET;
+
     avx_mutex_lock(&send_ctx->lock);
     send_ctx->running = false;
     send_ctx->client_rx_running = false;
     send_ctx->nack_thread_running = false;
 
-    /* Signal and close all active clients */
+    /* Shutdown active client sockets and clear fds; close only after workers join */
     for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
+        avx_mutex_lock(&send_ctx->clients[i].tx_lock);
         if (send_ctx->clients[i].fd != AVX_INVALID_SOCKET) {
-            shutdown(send_ctx->clients[i].fd, AVX_SHUT_RDWR);
-            avx_socket_close(send_ctx->clients[i].fd);
+            close_client_fds[i] = send_ctx->clients[i].fd;
+            shutdown(close_client_fds[i], AVX_SHUT_RDWR);
             send_ctx->clients[i].fd = AVX_INVALID_SOCKET;
         }
-        avx_mutex_lock(&send_ctx->clients[i].tx_lock);
         send_ctx->clients[i].tx_running = false;
         avx_cond_broadcast(&send_ctx->clients[i].tx_cond);
         avx_mutex_unlock(&send_ctx->clients[i].tx_lock);
@@ -892,8 +929,8 @@ OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send_ctx) {
     send_ctx->active_clients = 0;
     send_ctx->tcp_client_fd = AVX_INVALID_SOCKET;
     if (send_ctx->tcp_listen_fd != AVX_INVALID_SOCKET) {
-        shutdown(send_ctx->tcp_listen_fd, AVX_SHUT_RDWR);
-        avx_socket_close(send_ctx->tcp_listen_fd);
+        close_listen_fd = send_ctx->tcp_listen_fd;
+        shutdown(close_listen_fd, AVX_SHUT_RDWR);
         send_ctx->tcp_listen_fd = AVX_INVALID_SOCKET;
     }
     avx_mutex_unlock(&send_ctx->lock);
@@ -917,9 +954,21 @@ OPENAVX_API void avx_send_stop_listener(avx_send_ctx_t* send_ctx) {
         send_ctx->client_rx_thread = 0;
     }
     if (send_ctx->nack_thread_active) {
-        send_ctx->nack_thread_running = false;
         avx_thread_join(send_ctx->nack_thread);
         send_ctx->nack_thread_active = false;
         send_ctx->nack_thread = 0;
+    }
+
+    if (close_listen_fd != AVX_INVALID_SOCKET) {
+        avx_socket_close(close_listen_fd);
+    }
+    for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
+        if (close_client_fds[i] != AVX_INVALID_SOCKET) {
+            avx_socket_close(close_client_fds[i]);
+        }
+        if (send_ctx->clients[i].pending_close_fd != AVX_INVALID_SOCKET) {
+            avx_socket_close(send_ctx->clients[i].pending_close_fd);
+            send_ctx->clients[i].pending_close_fd = AVX_INVALID_SOCKET;
+        }
     }
 }

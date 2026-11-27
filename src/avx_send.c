@@ -80,6 +80,8 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
         slot->clients[c].last_rtt_ms = 0.0f;
         slot->clients[c].last_rtt_sample_ns = 0;
         slot->clients[c].tx_running = false;
+        slot->clients[c].tx_exited = false;
+        slot->clients[c].pending_close_fd = AVX_INVALID_SOCKET;
         avx_mutex_init(&slot->clients[c].tx_lock);
         avx_cond_init(&slot->clients[c].tx_cond);
     }
@@ -254,6 +256,9 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
         }
     }
 
+    /* Initialize mDNS timestamp before starting listener thread */
+    slot->last_mdns_broadcast_ns = avx_time_ns();
+
     /* Start TCP Server */
     avx_send_start_listener(slot);
 
@@ -268,7 +273,6 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
     slot->source_info.group = slot->groups;
 
     /* Broadcast source via mDNS (UDP 5353) with specific egress binding */
-    slot->last_mdns_broadcast_ns = avx_time_ns();
     avx_mdns_broadcast_source_ex(slot->name, slot->port, slot->advertised_ip);
 
     /* Register with Discovery Server(s) if configured */
@@ -1301,7 +1305,10 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
         bool congested = false;
         for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
             if (slot->clients[i].fd != AVX_INVALID_SOCKET) {
-                if (slot->clients[i].congestion_level > 0 || slot->clients[i].queue_count > 0) {
+                avx_mutex_lock(&slot->clients[i].tx_lock);
+                bool client_busy = (slot->clients[i].congestion_level > 0 || slot->clients[i].queue_count > 0);
+                avx_mutex_unlock(&slot->clients[i].tx_lock);
+                if (client_busy) {
                     congested = true;
                     break;
                 }

@@ -281,6 +281,8 @@ typedef struct avx_client_slot_t {
     int               client_index;
     avx_thread_t      tx_thread;
     bool              tx_thread_active;
+    bool              tx_exited;
+    avx_socket_t      pending_close_fd;
     avx_mutex_t       tx_lock;
     avx_cond_t        tx_cond;
     avx_queue_item_t  queue[AVX_CLIENT_QUEUE_DEPTH];
