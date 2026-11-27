@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 
 /* Helper to clamp 32-bit integer to 16-bit signed range */
 static inline int16_t clamp_s16(int val) {
@@ -51,7 +52,15 @@ void avx_util_audio_to_interleaved_16s(
 
         for (uint32_t s = 0; s < samples; ++s) {
             float f = src_ch[s] * gain;
-            dst_ptr[(size_t)s * channels] = clamp_s16((int)roundf(f * 32767.0f));
+            if (isnan(f)) {
+                dst_ptr[(size_t)s * channels] = 0;
+            } else if (f >= 1.0f) {
+                dst_ptr[(size_t)s * channels] = INT16_MAX;
+            } else if (f <= -1.0f) {
+                dst_ptr[(size_t)s * channels] = INT16_MIN;
+            } else {
+                dst_ptr[(size_t)s * channels] = clamp_s16((int)roundf(f * 32767.0f));
+            }
         }
     }
 }
@@ -165,10 +174,16 @@ void avx_util_audio_to_interleaved_32s(
         int32_t* dst_ptr = dst->data + c;
 
         for (uint32_t s = 0; s < samples; ++s) {
-            double d = (double)src_ch[s] * 2147483647.0;
-            if (d < -2147483648.0) d = -2147483648.0;
-            if (d > 2147483647.0)  d = 2147483647.0;
-            dst_ptr[(size_t)s * channels] = (int32_t)round(d);
+            double d = (double)src_ch[s];
+            if (isnan(d)) {
+                dst_ptr[(size_t)s * channels] = 0;
+            } else if (d >= 1.0) {
+                dst_ptr[(size_t)s * channels] = INT32_MAX;
+            } else if (d <= -1.0) {
+                dst_ptr[(size_t)s * channels] = INT32_MIN;
+            } else {
+                dst_ptr[(size_t)s * channels] = (int32_t)round(d * 2147483647.0);
+            }
         }
     }
 }
