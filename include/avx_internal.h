@@ -484,6 +484,7 @@ typedef struct avx_recv_ctx_t {
     avx_udp_rudp_receiver_t *rudp_receiver;
     struct sockaddr_storage sender_udp_addr;
     bool has_sender_udp;
+    char passphrase[256];
 
     /* High-Efficiency Audio Decompression Subsystem */
     avx_audio_decoder_t          *audio_decoder;

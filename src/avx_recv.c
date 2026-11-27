@@ -13,6 +13,7 @@
 #include "avx_rtsp.h"
 #include "avx_color.h"
 #include "avx_wire.h"
+#include "avx_crypto.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -434,6 +435,24 @@ static bool avx_recv_finish_tcp_handshake_locked(avx_recv_ctx_t* slot, avx_socke
         avx_trace_packet("[RX]", "TCP HANDSHAKE", xml_data, xml_len);
         avx_rx_parse_failover_metadata(slot, xml_data);
 
+        /* Re-derive RUDP E2EE key using the sender's advertised stream name */
+        const char *sname = strstr(xml_data, "name=\"");
+        if (sname && slot->rudp_receiver && slot->passphrase[0] != '\0') {
+            sname += 6;
+            const char *end_quote = strchr(sname, '"');
+            if (end_quote && end_quote > sname) {
+                char sender_name[256];
+                size_t nlen = (size_t)(end_quote - sname);
+                if (nlen >= sizeof(sender_name)) nlen = sizeof(sender_name) - 1;
+                memcpy(sender_name, sname, nlen);
+                sender_name[nlen] = '\0';
+                avx_udp_rudp_receiver_set_passphrase(
+                    (avx_udp_rudp_receiver_t*)slot->rudp_receiver,
+                    slot->passphrase,
+                    sender_name);
+            }
+        }
+
         /* Parse UDP port and transport advertised by sender */
         const char *uport = strstr(xml_data, "udp_port=\"");
         if (uport) {
@@ -720,6 +739,10 @@ OPENAVX_API avx_rx_instance_t avx_rx_create(const avx_rx_config_t* p_create_sett
     slot->udp_port = 0;
     slot->rudp_receiver = NULL;
     slot->has_sender_udp = false;
+    slot->passphrase[0] = '\0';
+    if (p_create_settings && p_create_settings->passphrase && p_create_settings->passphrase[0] != '\0') {
+        snprintf(slot->passphrase, sizeof(slot->passphrase), "%s", p_create_settings->passphrase);
+    }
 
     slot->audio_decoder = NULL;
     slot->audio_decoder_fourcc = 0;
@@ -850,6 +873,8 @@ OPENAVX_API void avx_rx_destroy(avx_rx_instance_t p_instance) {
         avx_udp_rudp_receiver_destroy((avx_udp_rudp_receiver_t*)slot->rudp_receiver);
         slot->rudp_receiver = NULL;
     }
+    volatile char *vp = slot->passphrase;
+    for (size_t i = 0; i < sizeof(slot->passphrase); ++i) vp[i] = 0;
     if (slot->udp_sock != AVX_INVALID_SOCKET) {
         avx_socket_close(slot->udp_sock);
         slot->udp_sock = AVX_INVALID_SOCKET;
