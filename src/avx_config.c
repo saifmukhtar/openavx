@@ -287,10 +287,8 @@ bool avx_config_find_path(char* out_path, size_t max_len) {
     return false;
 }
 
-void avx_config_init(void) {
-    avx_mutex_lock(&g_config_lock);
+static void avx_config_init_locked(void) {
     if (g_avx_config.loaded) {
-        avx_mutex_unlock(&g_config_lock);
         return;
     }
 
@@ -327,6 +325,12 @@ void avx_config_init(void) {
         snprintf(g_avx_config.transport, sizeof(g_avx_config.transport), "%s", env_transport);
     }
 
+    g_avx_config.loaded = true;
+}
+
+void avx_config_init(void) {
+    avx_mutex_lock(&g_config_lock);
+    avx_config_init_locked();
     avx_mutex_unlock(&g_config_lock);
 }
 
@@ -338,11 +342,9 @@ void avx_config_cleanup(void) {
 
 const avx_config_t* avx_config_get(void) {
     avx_mutex_lock(&g_config_lock);
-    bool need_init = !g_avx_config.loaded;
-    avx_mutex_unlock(&g_config_lock);
-
-    if (need_init) {
-        avx_config_init();
+    if (!g_avx_config.loaded) {
+        avx_config_init_locked();
     }
+    avx_mutex_unlock(&g_config_lock);
     return &g_avx_config;
 }
