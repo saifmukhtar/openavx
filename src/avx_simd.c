@@ -1693,3 +1693,215 @@ void avx_simd_idct_8x8_put(const int16_t in[64], uint8_t *dest, int stride) {
 
     avx_scalar_idct_8x8_put(in, dest, stride);
 }
+
+/* ========================================================================= */
+/* 5. SIMD AUDIO DEINTERLEAVE KERNELS (FLT / S16 / S32 -> PLANAR F32)        */
+/* ========================================================================= */
+
+static void scalar_deinterleave_flt(const float *__restrict src, float *__restrict dst_planar,
+                                    uint16_t channels, uint32_t frames) {
+    if (channels == 1) {
+        memcpy(dst_planar, src, (size_t)frames * sizeof(float));
+        return;
+    }
+    for (uint32_t i = 0; i < frames; ++i) {
+        const float *sf = src + (size_t)i * channels;
+        for (uint16_t c = 0; c < channels; ++c) {
+            dst_planar[(size_t)c * frames + i] = sf[c];
+        }
+    }
+}
+
+static void scalar_deinterleave_s16(const int16_t *__restrict src, float *__restrict dst_planar,
+                                    uint16_t channels, uint32_t frames) {
+    const float scale = 1.0f / 32768.0f;
+    for (uint32_t i = 0; i < frames; ++i) {
+        const int16_t *sf = src + (size_t)i * channels;
+        for (uint16_t c = 0; c < channels; ++c) {
+            dst_planar[(size_t)c * frames + i] = (float)sf[c] * scale;
+        }
+    }
+}
+
+static void scalar_deinterleave_s32(const int32_t *__restrict src, float *__restrict dst_planar,
+                                    uint16_t channels, uint32_t frames) {
+    const float scale = 1.0f / 2147483648.0f;
+    for (uint32_t i = 0; i < frames; ++i) {
+        const int32_t *sf = src + (size_t)i * channels;
+        for (uint16_t c = 0; c < channels; ++c) {
+            dst_planar[(size_t)c * frames + i] = (float)sf[c] * scale;
+        }
+    }
+}
+
+#if HAS_X86_SIMD
+AVX_TARGET_AVX2
+static void avx2_deinterleave_flt_stereo(const float *__restrict src, float *__restrict dst_l,
+                                         float *__restrict dst_r, uint32_t frames) {
+    uint32_t i = 0;
+    for (; i + 8 <= frames; i += 8) {
+        __m256 a  = _mm256_loadu_ps(src + (size_t)i * 2);
+        __m256 b  = _mm256_loadu_ps(src + (size_t)i * 2 + 8);
+        __m256 t0 = _mm256_shuffle_ps(a, b, _MM_SHUFFLE(2, 0, 2, 0));
+        __m256 t1 = _mm256_shuffle_ps(a, b, _MM_SHUFFLE(3, 1, 3, 1));
+        __m256 l  = _mm256_castpd_ps(_mm256_permute4x64_pd(_mm256_castps_pd(t0), 0xD8));
+        __m256 r  = _mm256_castpd_ps(_mm256_permute4x64_pd(_mm256_castps_pd(t1), 0xD8));
+        _mm256_storeu_ps(dst_l + i, l);
+        _mm256_storeu_ps(dst_r + i, r);
+    }
+    for (; i < frames; ++i) {
+        dst_l[i] = src[(size_t)i * 2 + 0];
+        dst_r[i] = src[(size_t)i * 2 + 1];
+    }
+}
+
+AVX_TARGET_AVX2
+static void avx2_deinterleave_s16_stereo(const int16_t *__restrict src, float *__restrict dst_l,
+                                         float *__restrict dst_r, uint32_t frames) {
+    const __m256 vscale = _mm256_set1_ps(1.0f / 32768.0f);
+    uint32_t i = 0;
+    for (; i + 8 <= frames; i += 8) {
+        __m256i v   = _mm256_loadu_si256((const __m256i*)(src + (size_t)i * 2));
+        __m256i li  = _mm256_srai_epi32(_mm256_slli_epi32(v, 16), 16);
+        __m256i ri  = _mm256_srai_epi32(v, 16);
+        __m256  lf  = _mm256_mul_ps(_mm256_cvtepi32_ps(li), vscale);
+        __m256  rf  = _mm256_mul_ps(_mm256_cvtepi32_ps(ri), vscale);
+        _mm256_storeu_ps(dst_l + i, lf);
+        _mm256_storeu_ps(dst_r + i, rf);
+    }
+    const float scale = 1.0f / 32768.0f;
+    for (; i < frames; ++i) {
+        dst_l[i] = (float)src[(size_t)i * 2 + 0] * scale;
+        dst_r[i] = (float)src[(size_t)i * 2 + 1] * scale;
+    }
+}
+
+AVX_TARGET_AVX2
+static void avx2_deinterleave_s32_stereo(const int32_t *__restrict src, float *__restrict dst_l,
+                                         float *__restrict dst_r, uint32_t frames) {
+    const __m256 vscale = _mm256_set1_ps(1.0f / 2147483648.0f);
+    uint32_t i = 0;
+    for (; i + 8 <= frames; i += 8) {
+        __m256i a  = _mm256_loadu_si256((const __m256i*)(src + (size_t)i * 2));
+        __m256i b  = _mm256_loadu_si256((const __m256i*)(src + (size_t)i * 2 + 8));
+        __m256  fa = _mm256_cvtepi32_ps(a);
+        __m256  fb = _mm256_cvtepi32_ps(b);
+        __m256  t0 = _mm256_shuffle_ps(fa, fb, _MM_SHUFFLE(2, 0, 2, 0));
+        __m256  t1 = _mm256_shuffle_ps(fa, fb, _MM_SHUFFLE(3, 1, 3, 1));
+        __m256  l  = _mm256_mul_ps(_mm256_castpd_ps(_mm256_permute4x64_pd(_mm256_castps_pd(t0), 0xD8)), vscale);
+        __m256  r  = _mm256_mul_ps(_mm256_castpd_ps(_mm256_permute4x64_pd(_mm256_castps_pd(t1), 0xD8)), vscale);
+        _mm256_storeu_ps(dst_l + i, l);
+        _mm256_storeu_ps(dst_r + i, r);
+    }
+    const float scale = 1.0f / 2147483648.0f;
+    for (; i < frames; ++i) {
+        dst_l[i] = (float)src[(size_t)i * 2 + 0] * scale;
+        dst_r[i] = (float)src[(size_t)i * 2 + 1] * scale;
+    }
+}
+#elif HAS_ARM_NEON
+static void neon_deinterleave_flt_stereo(const float *__restrict src, float *__restrict dst_l,
+                                         float *__restrict dst_r, uint32_t frames) {
+    uint32_t i = 0;
+    for (; i + 4 <= frames; i += 4) {
+        float32x4x2_t v = vld2q_f32(src + (size_t)i * 2);
+        vst1q_f32(dst_l + i, v.val[0]);
+        vst1q_f32(dst_r + i, v.val[1]);
+    }
+    for (; i < frames; ++i) {
+        dst_l[i] = src[(size_t)i * 2 + 0];
+        dst_r[i] = src[(size_t)i * 2 + 1];
+    }
+}
+
+static void neon_deinterleave_s16_stereo(const int16_t *__restrict src, float *__restrict dst_l,
+                                         float *__restrict dst_r, uint32_t frames) {
+    const float scale = 1.0f / 32768.0f;
+    uint32_t i = 0;
+    for (; i + 4 <= frames; i += 4) {
+        int16x4x2_t v = vld2_s16(src + (size_t)i * 2);
+        float32x4_t lf = vmulq_n_f32(vcvtq_f32_s32(vmovl_s16(v.val[0])), scale);
+        float32x4_t rf = vmulq_n_f32(vcvtq_f32_s32(vmovl_s16(v.val[1])), scale);
+        vst1q_f32(dst_l + i, lf);
+        vst1q_f32(dst_r + i, rf);
+    }
+    for (; i < frames; ++i) {
+        dst_l[i] = (float)src[(size_t)i * 2 + 0] * scale;
+        dst_r[i] = (float)src[(size_t)i * 2 + 1] * scale;
+    }
+}
+
+static void neon_deinterleave_s32_stereo(const int32_t *__restrict src, float *__restrict dst_l,
+                                         float *__restrict dst_r, uint32_t frames) {
+    const float scale = 1.0f / 2147483648.0f;
+    uint32_t i = 0;
+    for (; i + 4 <= frames; i += 4) {
+        int32x4x2_t v = vld2q_s32(src + (size_t)i * 2);
+        float32x4_t lf = vmulq_n_f32(vcvtq_f32_s32(v.val[0]), scale);
+        float32x4_t rf = vmulq_n_f32(vcvtq_f32_s32(v.val[1]), scale);
+        vst1q_f32(dst_l + i, lf);
+        vst1q_f32(dst_r + i, rf);
+    }
+    for (; i < frames; ++i) {
+        dst_l[i] = (float)src[(size_t)i * 2 + 0] * scale;
+        dst_r[i] = (float)src[(size_t)i * 2 + 1] * scale;
+    }
+}
+#endif
+
+void avx_simd_deinterleave_flt_to_planar(const float *src, float *dst_planar, uint16_t channels, uint32_t frames) {
+    if (!src || !dst_planar || channels == 0 || frames == 0) return;
+    detect_cpu_caps();
+    if (channels == 2) {
+#if HAS_X86_SIMD
+        if (g_simd_type == AVX_SIMD_AVX2) {
+            avx2_deinterleave_flt_stereo(src, dst_planar, dst_planar + frames, frames);
+            return;
+        }
+#elif HAS_ARM_NEON
+        if (g_simd_type == AVX_SIMD_NEON) {
+            neon_deinterleave_flt_stereo(src, dst_planar, dst_planar + frames, frames);
+            return;
+        }
+#endif
+    }
+    scalar_deinterleave_flt(src, dst_planar, channels, frames);
+}
+
+void avx_simd_deinterleave_s16_to_planar(const int16_t *src, float *dst_planar, uint16_t channels, uint32_t frames) {
+    if (!src || !dst_planar || channels == 0 || frames == 0) return;
+    detect_cpu_caps();
+    if (channels == 2) {
+#if HAS_X86_SIMD
+        if (g_simd_type == AVX_SIMD_AVX2) {
+            avx2_deinterleave_s16_stereo(src, dst_planar, dst_planar + frames, frames);
+            return;
+        }
+#elif HAS_ARM_NEON
+        if (g_simd_type == AVX_SIMD_NEON) {
+            neon_deinterleave_s16_stereo(src, dst_planar, dst_planar + frames, frames);
+            return;
+        }
+#endif
+    }
+    scalar_deinterleave_s16(src, dst_planar, channels, frames);
+}
+
+void avx_simd_deinterleave_s32_to_planar(const int32_t *src, float *dst_planar, uint16_t channels, uint32_t frames) {
+    if (!src || !dst_planar || channels == 0 || frames == 0) return;
+    detect_cpu_caps();
+    if (channels == 2) {
+#if HAS_X86_SIMD
+        if (g_simd_type == AVX_SIMD_AVX2) {
+            avx2_deinterleave_s32_stereo(src, dst_planar, dst_planar + frames, frames);
+            return;
+        }
+#elif HAS_ARM_NEON
+        if (g_simd_type == AVX_SIMD_NEON) {
+            neon_deinterleave_s32_stereo(src, dst_planar, dst_planar + frames, frames);
+            return;
+        }
+#endif
+    }
+    scalar_deinterleave_s32(src, dst_planar, channels, frames);
+}

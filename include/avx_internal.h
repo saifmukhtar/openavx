@@ -245,10 +245,13 @@ typedef struct avx_tx_video_slot_t {
 } avx_tx_video_slot_t;
 
 /* Shared Packet for Audio & Metadata */
+#define AVX_TX_AUDIO_POOL_SIZE 64
 typedef struct avx_tx_shared_pkt_t {
     uint8_t *data;
     size_t   size;
+    size_t   cap;
     int      refcount;
+    bool     pooled;
 } avx_tx_shared_pkt_t;
 
 typedef enum avx_queue_item_type_e {
@@ -384,6 +387,7 @@ struct avx_send_ctx_t {
     float                        *audio_planar_scratch;
     size_t                        audio_planar_scratch_cap;
     uint8_t                      *audio_comp_scratch;
+    avx_tx_shared_pkt_t           audio_pool[AVX_TX_AUDIO_POOL_SIZE];
 
     /* Per-Stream Video Encoder Subsystem */
     avx_video_encoder_t          *video_encoder;
@@ -535,6 +539,8 @@ OPENAVX_API bool avx_net_get_default_ip(char* out_ip, size_t out_len);
 
 /* Packet Tracing & Zero-Sudo PCAP Generation */
 void avx_trace_packet(const char* direction, const char* tag, const void* data, size_t len);
+bool avx_pcap_is_enabled(void);
+void avx_tx_release_shared_pkt_locked(avx_tx_shared_pkt_t *pkt);
 void avx_pcap_init(const char* filepath);
 void avx_pcap_write_packet(const void* data, size_t len);
 void avx_pcap_write_udp(uint32_t src_ip_net, uint16_t src_port_host, uint32_t dst_ip_net, uint16_t dst_port_host, const void* payload, size_t len);

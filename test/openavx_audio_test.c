@@ -14,6 +14,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <time.h>
 #include "openavx.h"
 #include "avx_audio.h"
 #include "avx_simd.h"
@@ -1333,6 +1334,114 @@ static void test_audio_send_edge_cases(void) {
     printf("  [+] Audio Send Edge Cases (Full-Scale, 16-ch, Padded Stride): PASSED\n");
 }
 
+static int cmp_double_asc(const void *a, const void *b) {
+    double da = *(const double*)a;
+    double db = *(const double*)b;
+    return (da > db) - (da < db);
+}
+
+static double now_us_monotonic(void) {
+#if defined(_WIN32)
+    return ((double)clock() / (double)CLOCKS_PER_SEC) * 1e6;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec * 1e-3;
+#endif
+}
+
+static void test_simd_deinterleave_and_p99_latency(void) {
+    printf("[16] Testing SIMD Deinterleave Kernels & Send p99 Latency...\n");
+
+    /* 1. Odd frame count (963 = 120*8 + 3 tail) for FLT, S16, S32 stereo */
+    {
+        const uint32_t frames = 963;
+        float flt_in[963 * 2];
+        int16_t s16_in[963 * 2];
+        int32_t s32_in[963 * 2];
+        float out[963 * 2];
+
+        for (uint32_t i = 0; i < frames; ++i) {
+            float l = 0.5f * sinf(2.0f * (float)M_PI * 440.0f * (float)i / 48000.0f);
+            float r = -0.5f * cosf(2.0f * (float)M_PI * 1000.0f * (float)i / 48000.0f);
+            flt_in[2 * i + 0] = l;
+            flt_in[2 * i + 1] = r;
+            s16_in[2 * i + 0] = (int16_t)(l * 32767.0f);
+            s16_in[2 * i + 1] = (int16_t)(r * 32767.0f);
+            s32_in[2 * i + 0] = (int32_t)((double)l * 2147483647.0);
+            s32_in[2 * i + 1] = (int32_t)((double)r * 2147483647.0);
+        }
+
+        avx_simd_deinterleave_flt_to_planar(flt_in, out, 2, frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            ASSERT_TRUE(out[i] == flt_in[2 * i + 0]);
+            ASSERT_TRUE(out[frames + i] == flt_in[2 * i + 1]);
+        }
+
+        avx_simd_deinterleave_s16_to_planar(s16_in, out, 2, frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            ASSERT_TRUE(fabsf(out[i] - (float)s16_in[2 * i + 0] * (1.0f / 32768.0f)) < 1e-6f);
+            ASSERT_TRUE(fabsf(out[frames + i] - (float)s16_in[2 * i + 1] * (1.0f / 32768.0f)) < 1e-6f);
+        }
+
+        avx_simd_deinterleave_s32_to_planar(s32_in, out, 2, frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            ASSERT_TRUE(fabsf(out[i] - (float)s32_in[2 * i + 0] * (1.0f / 2147483648.0f)) < 1e-6f);
+            ASSERT_TRUE(fabsf(out[frames + i] - (float)s32_in[2 * i + 1] * (1.0f / 2147483648.0f)) < 1e-6f);
+        }
+    }
+
+    /* 2. p99 send latency over 1000 frames (48 kHz stereo S16_INTERLEAVED, pooled zero-malloc steady state) */
+    {
+        oavx_context_t *ctx = oavx_context_create();
+        ASSERT_TRUE(ctx != NULL);
+        oavx_stream_config_t tx_cfg = { .name = "P99AudioTx", .direction = OAVX_DIR_TRANSMIT, .clock_sync = false };
+        oavx_stream_t *tx = oavx_stream_open(ctx, &tx_cfg);
+        ASSERT_TRUE(tx != NULL);
+        const oavx_endpoint_t *ep = oavx_stream_get_endpoint(tx);
+        oavx_stream_config_t rx_cfg = { .name = "P99AudioRx", .endpoint = ep->address, .direction = OAVX_DIR_RECEIVE, .bandwidth = OAVX_BANDWIDTH_HIGHEST, .clock_sync = false };
+        oavx_stream_t *rx = oavx_stream_open(ctx, &rx_cfg);
+        ASSERT_TRUE(rx != NULL);
+        oavx_stream_get_connection_count(tx, 500);
+
+        const uint32_t frames = 960;
+        int16_t s16_buf[960 * 2];
+        for (uint32_t i = 0; i < frames * 2; ++i) s16_buf[i] = (int16_t)(i & 0x7FF);
+
+        enum { N_ITERS = 500 };
+        double lats[N_ITERS];
+        for (int k = 0; k < N_ITERS; ++k) {
+            oavx_audio_frame_t aout = {
+                .sample_rate = 48000, .channels = 2, .frames = frames,
+                .format = OAVX_AUDIO_FMT_S16_INTERLEAVED,
+                .planes = { s16_buf },
+                .pts_ns = (int64_t)k * 20000000LL
+            };
+            double t0 = now_us_monotonic();
+            oavx_stream_send_audio(tx, &aout);
+            double t1 = now_us_monotonic();
+            lats[k] = t1 - t0;
+
+            oavx_audio_frame_t ain;
+            memset(&ain, 0, sizeof(ain));
+            if (oavx_stream_receive(rx, NULL, &ain, NULL, 0) == OAVX_FRAME_TYPE_AUDIO) {
+                oavx_stream_release_audio(rx, &ain);
+            }
+        }
+        qsort(lats, N_ITERS, sizeof(double), cmp_double_asc);
+        double p50 = lats[N_ITERS / 2];
+        double p99 = lats[(N_ITERS * 99) / 100];
+        printf("      Send Latency (960f stereo S16): p50=%.2f us, p99=%.2f us\n", p50, p99);
+        ASSERT_TRUE(p99 < 5000.0);
+
+        oavx_stream_close(rx);
+        oavx_stream_close(tx);
+        oavx_context_destroy(ctx);
+    }
+
+    printf("  [+] SIMD Deinterleave Kernels & Send p99 Latency: PASSED\n");
+}
+
 int main(void) {
     printf("=== OpenAVX Audio Engine Tests ===\n");
     printf("SIMD: %s\n\n", avx_simd_get_name());
@@ -1352,6 +1461,7 @@ int main(void) {
     test_upmix_stereo_to_5_1();
     test_interleaved_audio_send_formats();
     test_audio_send_edge_cases();
+    test_simd_deinterleave_and_p99_latency();
 
     printf("\n[PASS] openavx_audio_test\n");
     return 0;

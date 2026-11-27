@@ -161,11 +161,7 @@ void avx_client_queue_drain(avx_send_ctx_t* slot, avx_client_slot_t* client) {
         for (int i = 0; i < count; ++i) {
             if (local_items[i].type == AVX_QUEUE_ITEM_VIDEO) {
                 if (local_items[i].shared_pkt) {
-                    local_items[i].shared_pkt->refcount--;
-                    if (local_items[i].shared_pkt->refcount <= 0) {
-                        if (local_items[i].shared_pkt->data) free(local_items[i].shared_pkt->data);
-                        free(local_items[i].shared_pkt);
-                    }
+                    avx_tx_release_shared_pkt_locked(local_items[i].shared_pkt);
                 } else {
                     int p_idx = local_items[i].video_pool_idx;
                     if (p_idx >= 0 && p_idx < AVX_TX_VIDEO_POOL_SIZE) {
@@ -176,11 +172,7 @@ void avx_client_queue_drain(avx_send_ctx_t* slot, avx_client_slot_t* client) {
                 }
             } else if (local_items[i].type == AVX_QUEUE_ITEM_AUDIO || local_items[i].type == AVX_QUEUE_ITEM_METADATA) {
                 if (local_items[i].shared_pkt) {
-                    local_items[i].shared_pkt->refcount--;
-                    if (local_items[i].shared_pkt->refcount <= 0) {
-                        if (local_items[i].shared_pkt->data) free(local_items[i].shared_pkt->data);
-                        free(local_items[i].shared_pkt);
-                    }
+                    avx_tx_release_shared_pkt_locked(local_items[i].shared_pkt);
                 }
             }
         }
@@ -335,11 +327,7 @@ void* avx_send_client_tx_worker(void* arg) {
 
         if (item.type == AVX_QUEUE_ITEM_VIDEO) {
             if (item.shared_pkt) {
-                item.shared_pkt->refcount--;
-                if (item.shared_pkt->refcount <= 0) {
-                    if (item.shared_pkt->data) free(item.shared_pkt->data);
-                    free(item.shared_pkt);
-                }
+                avx_tx_release_shared_pkt_locked(item.shared_pkt);
             } else {
                 int p_idx = item.video_pool_idx;
                 if (p_idx >= 0 && p_idx < AVX_TX_VIDEO_POOL_SIZE) {
@@ -350,11 +338,7 @@ void* avx_send_client_tx_worker(void* arg) {
             }
         } else if (item.type == AVX_QUEUE_ITEM_AUDIO || item.type == AVX_QUEUE_ITEM_METADATA) {
             if (item.shared_pkt) {
-                item.shared_pkt->refcount--;
-                if (item.shared_pkt->refcount <= 0) {
-                    if (item.shared_pkt->data) free(item.shared_pkt->data);
-                    free(item.shared_pkt);
-                }
+                avx_tx_release_shared_pkt_locked(item.shared_pkt);
             }
         }
 

@@ -7,6 +7,7 @@
  */
 
 #include "avx_send_internal.h"
+#include "avx_simd.h"
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
@@ -196,6 +197,7 @@ OPENAVX_API avx_tx_instance_t avx_tx_create(const avx_tx_config_t* p_create_sett
     slot->audio_planar_scratch = NULL;
     slot->audio_planar_scratch_cap = 0;
     slot->audio_comp_scratch = NULL;
+    memset(slot->audio_pool, 0, sizeof(slot->audio_pool));
 
     slot->video_encoder = NULL;
     slot->video_enc_fourcc = 0;
@@ -381,6 +383,14 @@ OPENAVX_API void avx_tx_destroy(avx_tx_instance_t p_instance) {
     slot->audio_planar_scratch_cap = 0;
     free(slot->audio_comp_scratch);
     slot->audio_comp_scratch = NULL;
+    for (int i = 0; i < AVX_TX_AUDIO_POOL_SIZE; ++i) {
+        free(slot->audio_pool[i].data);
+        slot->audio_pool[i].data = NULL;
+        slot->audio_pool[i].cap = 0;
+        slot->audio_pool[i].size = 0;
+        slot->audio_pool[i].refcount = 0;
+        slot->audio_pool[i].pooled = false;
+    }
     avx_mutex_destroy(&slot->audio_enc_lock);
 
     if (slot->video_encoder) {
@@ -1025,6 +1035,55 @@ void avx_tx_send_video_async(avx_tx_instance_t p_instance, const oavx_video_fram
     avx_tx_send_video(p_instance, p_video_data);
 }
 
+void avx_tx_release_shared_pkt_locked(avx_tx_shared_pkt_t *pkt) {
+    if (!pkt) return;
+    pkt->refcount--;
+    if (pkt->refcount <= 0) {
+        pkt->refcount = 0;
+        if (!pkt->pooled) {
+            free(pkt->data);
+            free(pkt);
+        }
+    }
+}
+
+static avx_tx_shared_pkt_t* avx_tx_acquire_audio_pkt(avx_send_ctx_t *slot, size_t needed_size) {
+    avx_mutex_lock(&slot->lock);
+    for (int i = 0; i < AVX_TX_AUDIO_POOL_SIZE; ++i) {
+        avx_tx_shared_pkt_t *p = &slot->audio_pool[i];
+        if (p->refcount == 0) {
+            if (p->cap < needed_size) {
+                uint8_t *nb = (uint8_t*)realloc(p->data, needed_size);
+                if (!nb) {
+                    avx_mutex_unlock(&slot->lock);
+                    return NULL;
+                }
+                p->data = nb;
+                p->cap = needed_size;
+            }
+            p->size = needed_size;
+            p->refcount = 1;
+            p->pooled = true;
+            avx_mutex_unlock(&slot->lock);
+            return p;
+        }
+    }
+    avx_mutex_unlock(&slot->lock);
+
+    avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t*)malloc(sizeof(avx_tx_shared_pkt_t));
+    if (!pkt) return NULL;
+    pkt->data = (uint8_t*)malloc(needed_size);
+    if (!pkt->data) {
+        free(pkt);
+        return NULL;
+    }
+    pkt->size = needed_size;
+    pkt->cap = needed_size;
+    pkt->refcount = 1;
+    pkt->pooled = false;
+    return pkt;
+}
+
 /*
  * Distributes shared refcounted audio packet to client queues. Preempts and
  * evicts queued video frames if client queue is full to prevent audio dropouts.
@@ -1037,7 +1096,6 @@ static void avx_tx_enqueue_audio_shared_pkt(
     const void *sample_ptr,
     size_t sample_len
 ) {
-    pkt->refcount = 0;
     int enqueued_count = 0;
 
     for (int i = 0; i < AVX_MAX_CLIENTS; ++i) {
@@ -1110,10 +1168,7 @@ static void avx_tx_enqueue_audio_shared_pkt(
         avx_mutex_unlock(&slot->clients[i].tx_lock);
     }
 
-    if (enqueued_count == 0) {
-        free(pkt->data);
-        free(pkt);
-    } else {
+    if (enqueued_count > 0) {
         /* Telemetry tracking for audio */
         size_t a_wire = pkt->size * enqueued_count;
         slot->telem.total_bytes += a_wire;
@@ -1121,19 +1176,22 @@ static void avx_tx_enqueue_audio_shared_pkt(
 
         if (hdr_ptr && hdr_len > 0) {
             avx_trace_packet("[TX]", "AVX AUDIO FRAME", hdr_ptr, hdr_len);
-            size_t sample_cap = sample_len > 512 ? 512 : sample_len;
-            size_t snap_len = hdr_len + sample_cap;
-            uint8_t *snap = (uint8_t*)malloc(snap_len);
-            if (snap) {
-                memcpy(snap, hdr_ptr, hdr_len);
+            if (avx_pcap_is_enabled()) {
+                uint8_t snap[600];
+                size_t clamped_hdr = hdr_len > sizeof(snap) ? sizeof(snap) : hdr_len;
+                size_t avail = sizeof(snap) - clamped_hdr;
+                size_t sample_cap = sample_len > 512 ? 512 : sample_len;
+                if (sample_cap > avail) sample_cap = avail;
+                size_t snap_len = clamped_hdr + sample_cap;
+                memcpy(snap, hdr_ptr, clamped_hdr);
                 if (sample_ptr && sample_cap > 0) {
-                    memcpy(snap + hdr_len, sample_ptr, sample_cap);
+                    memcpy(snap + clamped_hdr, sample_ptr, sample_cap);
                 }
                 avx_pcap_write_tcp(htonl(0x7F000001), slot->port, htonl(0x7F000001), 54321, 200, 1, 0x18, snap, snap_len);
-                free(snap);
             }
         }
     }
+    avx_tx_release_shared_pkt_locked(pkt);
 }
 
 /*
@@ -1151,42 +1209,15 @@ static bool avx_convert_audio_to_planar_f32(
     }
 
     switch (src->format) {
-        case OAVX_AUDIO_FMT_FLT_INTERLEAVED: {
-            const float *s = (const float*)src->planes[0];
-            if (channels == 1) {
-                memcpy(dst_planar, s, (size_t)frames * sizeof(float));
-            } else {
-                for (uint32_t i = 0; i < frames; ++i) {
-                    const float *sf = s + (size_t)i * channels;
-                    for (uint16_t c = 0; c < channels; ++c) {
-                        dst_planar[(size_t)c * frames + i] = sf[c];
-                    }
-                }
-            }
+        case OAVX_AUDIO_FMT_FLT_INTERLEAVED:
+            avx_simd_deinterleave_flt_to_planar((const float*)src->planes[0], dst_planar, channels, frames);
             return true;
-        }
-        case OAVX_AUDIO_FMT_S16_INTERLEAVED: {
-            const int16_t *s = (const int16_t*)src->planes[0];
-            const float scale = 1.0f / 32768.0f;
-            for (uint32_t i = 0; i < frames; ++i) {
-                const int16_t *sf = s + (size_t)i * channels;
-                for (uint16_t c = 0; c < channels; ++c) {
-                    dst_planar[(size_t)c * frames + i] = (float)sf[c] * scale;
-                }
-            }
+        case OAVX_AUDIO_FMT_S16_INTERLEAVED:
+            avx_simd_deinterleave_s16_to_planar((const int16_t*)src->planes[0], dst_planar, channels, frames);
             return true;
-        }
-        case OAVX_AUDIO_FMT_S32_INTERLEAVED: {
-            const int32_t *s = (const int32_t*)src->planes[0];
-            const float scale = 1.0f / 2147483648.0f;
-            for (uint32_t i = 0; i < frames; ++i) {
-                const int32_t *sf = s + (size_t)i * channels;
-                for (uint16_t c = 0; c < channels; ++c) {
-                    dst_planar[(size_t)c * frames + i] = (float)sf[c] * scale;
-                }
-            }
+        case OAVX_AUDIO_FMT_S32_INTERLEAVED:
+            avx_simd_deinterleave_s32_to_planar((const int32_t*)src->planes[0], dst_planar, channels, frames);
             return true;
-        }
         case OAVX_AUDIO_FMT_FLT_PLANAR: {
             size_t ch_bytes = (size_t)frames * sizeof(float);
             bool any_extra_plane = false;
@@ -1319,19 +1350,13 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
                 fhdr.timecode = f_pts;
                 fhdr.payload_len = (uint32_t)f_size;
 
-                avx_tx_shared_pkt_t *fpkt = (avx_tx_shared_pkt_t*)malloc(sizeof(avx_tx_shared_pkt_t));
+                avx_tx_shared_pkt_t *fpkt = avx_tx_acquire_audio_pkt(slot, sizeof(fhdr) + f_size);
                 if (fpkt) {
-                    fpkt->size = sizeof(fhdr) + f_size;
-                    fpkt->data = (uint8_t*)malloc(fpkt->size);
-                    if (fpkt->data) {
-                        memcpy(fpkt->data, &fhdr, sizeof(fhdr));
-                        memcpy(fpkt->data + sizeof(fhdr), comp_buf, f_size);
-                        avx_mutex_lock(&slot->lock);
-                        avx_tx_enqueue_audio_shared_pkt(slot, fpkt, &fhdr, sizeof(fhdr), comp_buf, f_size);
-                        avx_mutex_unlock(&slot->lock);
-                    } else {
-                        free(fpkt);
-                    }
+                    memcpy(fpkt->data, &fhdr, sizeof(fhdr));
+                    memcpy(fpkt->data + sizeof(fhdr), comp_buf, f_size);
+                    avx_mutex_lock(&slot->lock);
+                    avx_tx_enqueue_audio_shared_pkt(slot, fpkt, &fhdr, sizeof(fhdr), comp_buf, f_size);
+                    avx_mutex_unlock(&slot->lock);
                 }
             }
         }
@@ -1423,15 +1448,8 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
                         chdr.timecode = out_pts;
                         chdr.payload_len = (uint32_t)comp_size;
 
-                        avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t*)malloc(sizeof(avx_tx_shared_pkt_t));
+                        avx_tx_shared_pkt_t *pkt = avx_tx_acquire_audio_pkt(slot, sizeof(chdr) + comp_size);
                         if (!pkt) break;
-
-                        pkt->size = sizeof(chdr) + comp_size;
-                        pkt->data = (uint8_t*)malloc(pkt->size);
-                        if (!pkt->data) {
-                            free(pkt);
-                            break;
-                        }
 
                         memcpy(pkt->data, &chdr, sizeof(chdr));
                         memcpy(pkt->data + sizeof(chdr), comp_buf, comp_size);
@@ -1471,20 +1489,14 @@ OPENAVX_API void avx_tx_send_audio(avx_tx_instance_t p_instance, const oavx_audi
     size_t audio_bytes = total_samples * sizeof(float);
     hdr.payload_len = (uint32_t)audio_bytes;
 
-    avx_tx_shared_pkt_t *pkt = (avx_tx_shared_pkt_t*)malloc(sizeof(avx_tx_shared_pkt_t));
+    avx_tx_shared_pkt_t *pkt = avx_tx_acquire_audio_pkt(slot, sizeof(hdr) + audio_bytes);
     if (!pkt) return;
-
-    pkt->size = sizeof(hdr) + audio_bytes;
-    pkt->data = (uint8_t*)malloc(pkt->size);
-    if (!pkt->data) {
-        free(pkt);
-        return;
-    }
 
     memcpy(pkt->data, &hdr, sizeof(hdr));
     if (!avx_convert_audio_to_planar_f32(p_audio_data, (float*)(pkt->data + sizeof(hdr)), channels, frames)) {
-        free(pkt->data);
-        free(pkt);
+        avx_mutex_lock(&slot->lock);
+        avx_tx_release_shared_pkt_locked(pkt);
+        avx_mutex_unlock(&slot->lock);
         return;
     }
 

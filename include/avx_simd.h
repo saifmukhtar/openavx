@@ -46,6 +46,11 @@ OPENAVX_API void avx_simd_alpha_blend_rgba(const uint8_t *fg, const uint8_t *bg,
 OPENAVX_API void avx_simd_fdct_8x8(const int16_t in[64], int16_t out[64]);
 OPENAVX_API void avx_simd_idct_8x8_put(const int16_t in[64], uint8_t *dest, int stride);
 
+/* SIMD Accelerated Audio Deinterleave to Planar Float32 */
+OPENAVX_API void avx_simd_deinterleave_flt_to_planar(const float *src, float *dst_planar, uint16_t channels, uint32_t frames);
+OPENAVX_API void avx_simd_deinterleave_s16_to_planar(const int16_t *src, float *dst_planar, uint16_t channels, uint32_t frames);
+OPENAVX_API void avx_simd_deinterleave_s32_to_planar(const int32_t *src, float *dst_planar, uint16_t channels, uint32_t frames);
+
 /* Scalar Reference Implementations (for benchmark comparison & verification) */
 OPENAVX_API void avx_scalar_uyvy_to_rgba(const uint8_t *src, uint8_t *dst, int width, int height);
 OPENAVX_API void avx_scalar_uyvy_to_bgra(const uint8_t *src, uint8_t *dst, int width, int height);

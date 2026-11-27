@@ -124,3 +124,31 @@ jobs:
 
       - name: Verify Staging Install
         run: cmake --install build --config Release --prefix "${{ github.workspace }}/install_test"
+
+  # ============================================================================
+  # 4. ASan + UBSan Sanitizer & Audio Latency Verification
+  # ============================================================================
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Configure CMake (ASan + UBSan)
+        run: >
+          cmake -B build-san
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_EXTENSIONS=OFF
+          -DBUILD_TESTING=ON
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build Audio & Loopback Tests
+        run: cmake --build build-san --target openavx_audio_test openavx_audio_codec_test openavx_loopback_test openavx_compressed_loopback_test openavx_simd_audit_test -j
+
+      - name: Run Sanitizer CTest Suite
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-san -R "^(openavx_audio_test|openavx_audio_codec_test|openavx_loopback_test|openavx_compressed_loopback_test|openavx_simd_audit_test)$" --output-on-failure --timeout 90
