@@ -99,10 +99,11 @@ static void test_fuzz_wire_unpack(const uint8_t *data, size_t size) {
             uint32_t xres;
             uint32_t yres;
             uint32_t fourcc;
-            int32_t  frame_rate_n;
-            int32_t  frame_rate_d;
-            int64_t  timecode;
+            int32_t frame_rate_n;
+            int32_t frame_rate_d;
+            int64_t timecode;
             uint32_t payload_len;
+            uint32_t flags;
         } AVX_PACKED vhdr;
         AVX_PACKED_END
 
@@ -114,10 +115,10 @@ static void test_fuzz_wire_unpack(const uint8_t *data, size_t size) {
     } else if (magic == prof->magic_audio || magic == OAVX_WIRE_MAGIC_AUDIO) {
         AVX_PACKED_START
         struct {
-            int32_t  sample_rate;
-            int32_t  channels;
-            int32_t  samples;
-            int64_t  timecode;
+            int32_t sample_rate;
+            int32_t channels;
+            int32_t samples;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED ahdr;
         AVX_PACKED_END
@@ -132,7 +133,7 @@ static void test_fuzz_wire_unpack(const uint8_t *data, size_t size) {
     } else if (magic == prof->magic_metadata || magic == OAVX_WIRE_MAGIC_METADATA) {
         AVX_PACKED_START
         struct {
-            int64_t  timecode;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED mhdr;
         AVX_PACKED_END
@@ -144,10 +145,10 @@ static void test_fuzz_wire_unpack(const uint8_t *data, size_t size) {
         AVX_PACKED_START
         struct {
             uint32_t codec_fourcc;
-            int32_t  sample_rate;
-            int32_t  channels;
-            int32_t  samples;
-            int64_t  timecode;
+            int32_t sample_rate;
+            int32_t channels;
+            int32_t samples;
+            int64_t timecode;
             uint32_t payload_len;
         } AVX_PACKED cahdr;
         AVX_PACKED_END
@@ -184,7 +185,7 @@ static void test_fuzz_wire_socketpair(const uint8_t *data, size_t size) {
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0) {
         size_t send_len = size > 65536 ? 65536 : size;
-        (void)send(sv[0], (const char*)data, (int)send_len, 0);
+        (void)send(sv[0], (const char *)data, (int)send_len, 0);
         close(sv[0]);
 
         avx_rx_config_t cfg;
@@ -193,7 +194,7 @@ static void test_fuzz_wire_socketpair(const uint8_t *data, size_t size) {
 
         avx_rx_instance_t rx = avx_rx_create(&cfg);
         if (rx) {
-            avx_recv_ctx_t *slot = (avx_recv_ctx_t*)rx;
+            avx_recv_ctx_t *slot = (avx_recv_ctx_t *)rx;
             avx_mutex_lock(&slot->lock);
             slot->tcp_conn_fd = sv[1];
             slot->connected = true;
@@ -226,16 +227,10 @@ static void test_fuzz_wire_socketpair(const uint8_t *data, size_t size) {
 static void test_fuzz_speedhq_input(const uint8_t *data, size_t size) {
     if (!data || size < 6) return;
 
-    static const uint32_t s_shq_fourccs[8] = {
-        OAVX_FOURCC_VIDEO_TYPE_SHQ0,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ1,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ2,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ3,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ4,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ5,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ7,
-        OAVX_FOURCC_VIDEO_TYPE_SHQ9
-    };
+    static const uint32_t s_shq_fourccs[8] = {OAVX_FOURCC_VIDEO_TYPE_SHQ0, OAVX_FOURCC_VIDEO_TYPE_SHQ1,
+                                              OAVX_FOURCC_VIDEO_TYPE_SHQ2, OAVX_FOURCC_VIDEO_TYPE_SHQ3,
+                                              OAVX_FOURCC_VIDEO_TYPE_SHQ4, OAVX_FOURCC_VIDEO_TYPE_SHQ5,
+                                              OAVX_FOURCC_VIDEO_TYPE_SHQ7, OAVX_FOURCC_VIDEO_TYPE_SHQ9};
     uint32_t fourcc = s_shq_fourccs[data[0] % 8];
 
     uint16_t raw_w = (uint16_t)data[1] | ((uint16_t)data[2] << 8);
@@ -317,7 +312,7 @@ static void test_fuzz_audio_input(const uint8_t *data, size_t size) {
 
     avx_resampler_t *r = avx_resampler_create(in_rate, out_rate, channels, mode);
     if (r) {
-        (void)avx_resampler_process(r, (const float * const *)in_data, frames, out_data, max_out);
+        (void)avx_resampler_process(r, (const float *const *)in_data, frames, out_data, max_out);
         (void)avx_resampler_flush(r, out_data, max_out);
         avx_resampler_reset(r);
         avx_resampler_destroy(r);
@@ -327,9 +322,9 @@ static void test_fuzz_audio_input(const uint8_t *data, size_t size) {
 
     if (frames > 0) {
         avx_audio_downmix_stereo_to_mono(in_data[0], in_data[1], out_data[0], frames, norm_mode);
-        avx_audio_downmix_quad_to_stereo((const float * const *)in_data, out_data[0], out_data[1], frames, norm_mode);
-        avx_audio_downmix_5_1_to_stereo((const float * const *)in_data, out_data[0], out_data[1], frames, norm_mode);
-        avx_audio_downmix_7_1_to_stereo((const float * const *)in_data, out_data[0], out_data[1], frames, norm_mode);
+        avx_audio_downmix_quad_to_stereo((const float *const *)in_data, out_data[0], out_data[1], frames, norm_mode);
+        avx_audio_downmix_5_1_to_stereo((const float *const *)in_data, out_data[0], out_data[1], frames, norm_mode);
+        avx_audio_downmix_7_1_to_stereo((const float *const *)in_data, out_data[0], out_data[1], frames, norm_mode);
     }
 
     for (int c = 0; c < 8; ++c) {
@@ -387,9 +382,10 @@ int main(int argc, char **argv) {
 
     /* 2. Crash Artifact Regression */
     printf("\n[*] 2. Executing historical crash artifact regressions...\n");
-    
+
     // Crash 1: Truncated UYVA packet (from Nov 7)
-    snprintf(path_buf, sizeof(path_buf), "%s/fuzz/crashes/fuzz_wire_packet-crash-93132a7274cb0ca0c515a8e30ef02cc5db82c4b6", source_dir);
+    snprintf(path_buf, sizeof(path_buf),
+             "%s/fuzz/crashes/fuzz_wire_packet-crash-93132a7274cb0ca0c515a8e30ef02cc5db82c4b6", source_dir);
     size_t sz1 = 0;
     uint8_t *crash1 = read_file_to_buffer(path_buf, &sz1);
     if (crash1) {
@@ -403,7 +399,8 @@ int main(int argc, char **argv) {
     }
 
     // Crash 2: Slow-unit malformed XML metadata
-    snprintf(path_buf, sizeof(path_buf), "%s/fuzz/crashes/fuzz_wire_packet-slow-unit-1f70c8a855f22213f70f8367a09c2de41c362e3c", source_dir);
+    snprintf(path_buf, sizeof(path_buf),
+             "%s/fuzz/crashes/fuzz_wire_packet-slow-unit-1f70c8a855f22213f70f8367a09c2de41c362e3c", source_dir);
     size_t sz2 = 0;
     uint8_t *crash2 = read_file_to_buffer(path_buf, &sz2);
     if (crash2) {

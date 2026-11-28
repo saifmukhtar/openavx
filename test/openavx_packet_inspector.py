@@ -100,10 +100,10 @@ def main():
             for line in handshake_xml.strip().split("\n"):
                 print(f"        {Colors.DIM}{line}{Colors.RESET}")
 
-        # 4.2 Read Video Frame Header (36 bytes)
-        vhdr_raw = rx_sock.recv(36)
-        if len(vhdr_raw) == 36:
-            vmagic, vxres, vyres, vfourcc, vfr_n, vfr_d, vtc, vlen = struct.unpack("<IIIIiiqI", vhdr_raw)
+        # 4.2 Read Video Frame Header (40 bytes)
+        vhdr_raw = rx_sock.recv(40)
+        if len(vhdr_raw) == 40:
+            vmagic, vxres, vyres, vfourcc, vfr_n, vfr_d, vtc, vlen, vflags = struct.unpack("<IIIIiiqII", vhdr_raw)
             video_magic = vmagic
             video_fourcc = vfourcc
             fourcc_str = "".join([chr((vfourcc >> (8*i)) & 0xff) for i in range(4)])
@@ -199,7 +199,7 @@ def main():
         },
         {
             "channel": "Video Media Stream",
-            "standard_spec": "36-byte Video frame header (0x56585641) | FourCC SHQ2 / UYVY",
+            "standard_spec": "40-byte Video frame header (0x56585641) | FourCC SHQ2 / UYVY",
             "openavx_val": f"Magic: 0x{video_magic:08X} | FourCC: 0x{video_fourcc:08X} (UYVY/SHQ2)",
             "passed": video_magic == 0x56585641 and (video_fourcc == 0x32514853 or video_fourcc == 0x59565955)
         },

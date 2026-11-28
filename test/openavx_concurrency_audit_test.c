@@ -53,7 +53,7 @@ typedef struct {
 } audit_result_t;
 
 /* Monitored test runner executing test function in an isolated child process */
-static audit_result_t run_monitored_test(void (*test_fn)(void), int timeout_ms, const char* name) {
+static audit_result_t run_monitored_test(void (*test_fn)(void), int timeout_ms, const char *name) {
     audit_result_t res;
     memset(&res, 0, sizeof(res));
 
@@ -101,16 +101,19 @@ static audit_result_t run_monitored_test(void (*test_fn)(void), int timeout_ms, 
                 int code = WEXITSTATUS(status);
                 if (code == 0) {
                     res.passed = true;
-                    snprintf(res.details, sizeof(res.details), "Completed cleanly in %.2f ms (Exit Code 0)", res.duration_ms);
+                    snprintf(res.details, sizeof(res.details), "Completed cleanly in %.2f ms (Exit Code 0)",
+                             res.duration_ms);
                 } else {
                     res.passed = false;
-                    snprintf(res.details, sizeof(res.details), "Subprocess exited with failure code %d in %.2f ms", code, res.duration_ms);
+                    snprintf(res.details, sizeof(res.details), "Subprocess exited with failure code %d in %.2f ms",
+                             code, res.duration_ms);
                 }
             } else if (WIFSIGNALED(status)) {
                 int sig = WTERMSIG(status);
                 res.crashed = true;
                 res.passed = false;
-                snprintf(res.details, sizeof(res.details), "CRASH: Subprocess killed by signal %d (%s)", sig, strsignal(sig));
+                snprintf(res.details, sizeof(res.details), "CRASH: Subprocess killed by signal %d (%s)", sig,
+                         strsignal(sig));
             }
             return res;
         }
@@ -139,7 +142,7 @@ static void proof_f01_engine_teardown_self_deadlock(void) {
     printf("[*] F-01: Initializing engine and creating an active find instance...\n");
     avx_engine_initialize();
 
-    avx_find_config_t fcfg = { .show_local_sources = false };
+    avx_find_config_t fcfg = {.show_local_sources = false};
     avx_find_instance_t finder = avx_find_create(&fcfg);
     if (!finder) {
         printf("    [-] Failed to create finder\n");
@@ -160,7 +163,7 @@ static void proof_f01_engine_teardown_self_deadlock(void) {
 
 static volatile bool g_f02_stop = false;
 
-static void* f02_query_thread(void* arg) {
+static void *f02_query_thread(void *arg) {
     avx_find_instance_t finder = (avx_find_instance_t)arg;
     while (!g_f02_stop) {
         uint32_t count = 0;
@@ -175,7 +178,7 @@ static void proof_f02_abba_deadlock(void) {
     printf("[*] F-02: Demonstrating ABBA lock order inversion between slot->lock and global_lock...\n");
     avx_engine_initialize();
 
-    avx_find_config_t fcfg = { .show_local_sources = true };
+    avx_find_config_t fcfg = {.show_local_sources = true};
     avx_find_instance_t finder = avx_find_create(&fcfg);
     if (!finder) exit(1);
 
@@ -184,7 +187,7 @@ static void proof_f02_abba_deadlock(void) {
 
     /* Thread 2 repeatedly acquires global_lock and destroys instances */
     for (int i = 0; i < 50; ++i) {
-        avx_tx_config_t sc = { .name = "TempTx", .clock_video = false, .clock_audio = false };
+        avx_tx_config_t sc = {.name = "TempTx", .clock_video = false, .clock_audio = false};
         avx_tx_instance_t tx = avx_tx_create(&sc);
         if (tx) {
             usleep(200);
@@ -205,32 +208,33 @@ static int g_f03_srv_sock = -1;
 static int g_f03_client_sock = -1;
 static uint16_t g_f03_port = 0;
 
-static void* f03_dummy_sender(void* arg) {
+static void *f03_dummy_sender(void *arg) {
     (void)arg;
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-    g_f03_client_sock = accept(g_f03_srv_sock, (struct sockaddr*)&client_addr, &client_len);
+    g_f03_client_sock = accept(g_f03_srv_sock, (struct sockaddr *)&client_addr, &client_len);
     if (g_f03_client_sock < 0) return NULL;
 
     /* 1. Send XML handshake */
     const char *xml = "<openavx version=\"1.0\" service=\"Test\"/>";
     uint32_t xml_len = (uint32_t)strlen(xml);
-    send(g_f03_client_sock, (const char*)&xml_len, sizeof(xml_len), 0);
+    send(g_f03_client_sock, (const char *)&xml_len, sizeof(xml_len), 0);
     send(g_f03_client_sock, xml, xml_len, 0);
 
     /* 2. Send video magic and header with large payload (1 MB) */
     uint32_t magic = OAVX_WIRE_MAGIC_VIDEO;
-    send(g_f03_client_sock, (const char*)&magic, sizeof(magic), 0);
+    send(g_f03_client_sock, (const char *)&magic, sizeof(magic), 0);
 
     AVX_PACKED_START
     struct {
         uint32_t xres;
         uint32_t yres;
         uint32_t fourcc;
-        int32_t  frame_rate_n;
-        int32_t  frame_rate_d;
-        int64_t  timecode;
+        int32_t frame_rate_n;
+        int32_t frame_rate_d;
+        int64_t timecode;
         uint32_t payload_len;
+        uint32_t flags;
     } AVX_PACKED vhdr;
     AVX_PACKED_END
     memset(&vhdr, 0, sizeof(vhdr));
@@ -240,7 +244,7 @@ static void* f03_dummy_sender(void* arg) {
     vhdr.frame_rate_n = 60;
     vhdr.frame_rate_d = 1;
     vhdr.payload_len = 500000; /* 500 KB */
-    send(g_f03_client_sock, (const char*)&vhdr, sizeof(vhdr), 0);
+    send(g_f03_client_sock, (const char *)&vhdr, sizeof(vhdr), 0);
 
     /* 3. Send ONLY 128 bytes and intentionally STALL without closing socket! */
     char partial[128] = {0};
@@ -253,7 +257,7 @@ static void* f03_dummy_sender(void* arg) {
     return NULL;
 }
 
-static void* f03_receiver_worker(void* arg) {
+static void *f03_receiver_worker(void *arg) {
     avx_rx_instance_t rx = (avx_rx_instance_t)arg;
     oavx_video_frame_t vf;
     oavx_audio_frame_t af;
@@ -270,18 +274,18 @@ static void proof_f03_teardown_deadlock(void) {
     g_f03_srv_sock = socket(AF_INET, SOCK_STREAM, 0);
     assert(g_f03_srv_sock >= 0);
     int opt = 1;
-    setsockopt(g_f03_srv_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+    setsockopt(g_f03_srv_sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
     struct sockaddr_in srv_addr;
     memset(&srv_addr, 0, sizeof(srv_addr));
     srv_addr.sin_family = AF_INET;
     srv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     srv_addr.sin_port = 0; /* Auto assign */
-    assert(bind(g_f03_srv_sock, (struct sockaddr*)&srv_addr, sizeof(srv_addr)) == 0);
+    assert(bind(g_f03_srv_sock, (struct sockaddr *)&srv_addr, sizeof(srv_addr)) == 0);
     assert(listen(g_f03_srv_sock, 1) == 0);
 
     socklen_t slen = sizeof(srv_addr);
-    getsockname(g_f03_srv_sock, (struct sockaddr*)&srv_addr, &slen);
+    getsockname(g_f03_srv_sock, (struct sockaddr *)&srv_addr, &slen);
     g_f03_port = ntohs(srv_addr.sin_port);
 
     pthread_t srv_th;
@@ -330,7 +334,7 @@ static void proof_f04_mutex_destruction_race(void) {
     avx_tx_instance_t tx = avx_tx_create(&sc);
     assert(tx != NULL);
 
-    avx_send_ctx_t *slot = (avx_send_ctx_t*)tx;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)tx;
     assert(slot->nack_thread_active == true);
 
     printf("    [+] Sender created with RUDP: slot->nack_thread active\n");
@@ -406,16 +410,14 @@ static void mock_hx_destroy(void *vctx) {
     free(vctx);
 }
 
-static const avx_video_decoder_ops_t g_mock_hx_ops = {
-    .name = "mock-compressed-priming",
-    .priority = 200,
-    .is_hardware = false,
-    .supports_fourcc = mock_hx_supports,
-    .create = mock_hx_create,
-    .decode = mock_hx_decode,
-    .reset = mock_hx_reset,
-    .destroy = mock_hx_destroy
-};
+static const avx_video_decoder_ops_t g_mock_hx_ops = {.name = "mock-compressed-priming",
+                                                      .priority = 200,
+                                                      .is_hardware = false,
+                                                      .supports_fourcc = mock_hx_supports,
+                                                      .create = mock_hx_create,
+                                                      .decode = mock_hx_decode,
+                                                      .reset = mock_hx_reset,
+                                                      .destroy = mock_hx_destroy};
 
 static void proof_f05_avcodec_singleton_destruction(void) {
     printf("[*] F-05: Testing decoupled video encoder/decoder context lifecycle...\n");
@@ -428,11 +430,11 @@ static void proof_f05_avcodec_singleton_destruction(void) {
     /* Verify NEED_MORE_DATA + reset + NV12 output contract with a registered mock backend */
     assert(avx_video_decoder_register(&g_mock_hx_ops));
     assert(avx_video_decoder_has_backend(OAVX_FOURCC_VIDEO_TYPE_H264));
-    avx_video_dec_cfg_t hx_cfg = { .fourcc = OAVX_FOURCC_VIDEO_TYPE_H264, .width = 16, .height = 16 };
+    avx_video_dec_cfg_t hx_cfg = {.fourcc = OAVX_FOURCC_VIDEO_TYPE_H264, .width = 16, .height = 16};
     avx_video_decoder_t *hx_dec = avx_video_decoder_create(&hx_cfg);
     assert(hx_dec != NULL);
     assert(strcmp(avx_video_decoder_get_backend_name(hx_dec), "mock-compressed-priming") == 0);
-    uint8_t dummy_nal[4] = { 0x00, 0x00, 0x01, 0x65 };
+    uint8_t dummy_nal[4] = {0x00, 0x00, 0x01, 0x65};
     oavx_video_frame_t hx_out = {0};
     assert(avx_video_decoder_decode(hx_dec, dummy_nal, sizeof(dummy_nal), &hx_out) == AVX_VIDEO_CODEC_NEED_MORE_DATA);
     assert(avx_video_decoder_decode(hx_dec, dummy_nal, sizeof(dummy_nal), &hx_out) == AVX_VIDEO_CODEC_OK);
@@ -446,10 +448,10 @@ static void proof_f05_avcodec_singleton_destruction(void) {
 
     const uint32_t w1 = 320, h1 = 240;
     const uint32_t w2 = 640, h2 = 480;
-    avx_video_enc_cfg_t ecfg1 = { .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w1, .height = h1 };
-    avx_video_enc_cfg_t ecfg2 = { .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w2, .height = h2 };
-    avx_video_dec_cfg_t dcfg1 = { .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w1, .height = h1 };
-    avx_video_dec_cfg_t dcfg2 = { .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w2, .height = h2 };
+    avx_video_enc_cfg_t ecfg1 = {.fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w1, .height = h1};
+    avx_video_enc_cfg_t ecfg2 = {.fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w2, .height = h2};
+    avx_video_dec_cfg_t dcfg1 = {.fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w1, .height = h1};
+    avx_video_dec_cfg_t dcfg2 = {.fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2, .width = w2, .height = h2};
 
     avx_video_encoder_t *enc1 = avx_video_encoder_create(&ecfg1);
     avx_video_encoder_t *enc2 = avx_video_encoder_create(&ecfg2);
@@ -483,10 +485,16 @@ static void proof_f05_avcodec_singleton_destruction(void) {
     assert(oavx_speedhq_get_quality() == 96); /* Per-instance quality must not mutate global default */
 
     for (int i = 0; i < 6; ++i) {
-        oavx_video_frame_t in1 = { .width = w1, .height = h1, .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2,
-                                   .planes = { uyvy1, NULL, NULL, NULL }, .strides = { w1 * 2, 0, 0, 0 } };
-        oavx_video_frame_t in2 = { .width = w2, .height = h2, .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2,
-                                   .planes = { uyvy2, NULL, NULL, NULL }, .strides = { w2 * 2, 0, 0, 0 } };
+        oavx_video_frame_t in1 = {.width = w1,
+                                  .height = h1,
+                                  .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2,
+                                  .planes = {uyvy1, NULL, NULL, NULL},
+                                  .strides = {w1 * 2, 0, 0, 0}};
+        oavx_video_frame_t in2 = {.width = w2,
+                                  .height = h2,
+                                  .fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2,
+                                  .planes = {uyvy2, NULL, NULL, NULL},
+                                  .strides = {w2 * 2, 0, 0, 0}};
         size_t len1 = 0, len2 = 0;
         bool kf1 = false, kf2 = false;
         assert(avx_video_encoder_encode(enc1, &in1, comp1, (size_t)w1 * h1 * 3, &len1, &kf1) == 0 && len1 > 0 && kf1);
@@ -520,17 +528,21 @@ static void proof_f05_avcodec_singleton_destruction(void) {
         }
     }
 
-    oavx_video_frame_t in_strided_uyvy = {
-        .width = w1, .height = h1, .fourcc = OAVX_FOURCC_VIDEO_TYPE_UYVY,
-        .planes = { uyvy_pad, NULL, NULL, NULL }, .strides = { padded_uyvy_stride, 0, 0, 0 }
-    };
-    oavx_video_frame_t in_strided_bgra = {
-        .width = w1, .height = h1, .fourcc = OAVX_FOURCC_VIDEO_TYPE_BGRA,
-        .planes = { bgra_pad, NULL, NULL, NULL }, .strides = { padded_bgra_stride, 0, 0, 0 }
-    };
+    oavx_video_frame_t in_strided_uyvy = {.width = w1,
+                                          .height = h1,
+                                          .fourcc = OAVX_FOURCC_VIDEO_TYPE_UYVY,
+                                          .planes = {uyvy_pad, NULL, NULL, NULL},
+                                          .strides = {padded_uyvy_stride, 0, 0, 0}};
+    oavx_video_frame_t in_strided_bgra = {.width = w1,
+                                          .height = h1,
+                                          .fourcc = OAVX_FOURCC_VIDEO_TYPE_BGRA,
+                                          .planes = {bgra_pad, NULL, NULL, NULL},
+                                          .strides = {padded_bgra_stride, 0, 0, 0}};
     size_t slen1 = 0, slen2 = 0;
-    assert(avx_video_encoder_encode(enc1, &in_strided_uyvy, comp1, (size_t)w1 * h1 * 3, &slen1, NULL) == 0 && slen1 > 0);
-    assert(avx_video_encoder_encode(enc1, &in_strided_bgra, comp1, (size_t)w1 * h1 * 3, &slen2, NULL) == 0 && slen2 > 0);
+    assert(avx_video_encoder_encode(enc1, &in_strided_uyvy, comp1, (size_t)w1 * h1 * 3, &slen1, NULL) == 0 &&
+           slen1 > 0);
+    assert(avx_video_encoder_encode(enc1, &in_strided_bgra, comp1, (size_t)w1 * h1 * 3, &slen2, NULL) == 0 &&
+           slen2 > 0);
 
     oavx_video_frame_t out_s;
     memset(&out_s, 0, sizeof(out_s));
@@ -540,8 +552,8 @@ static void proof_f05_avcodec_singleton_destruction(void) {
     /* Verify public per-stream oavx_stream_set_video_quality isolation */
     oavx_context_t *octx = oavx_context_create();
     assert(octx != NULL);
-    oavx_stream_config_t sc1 = { .name = "Q_STREAM_1", .direction = OAVX_DIR_TRANSMIT, .bind_ip = "127.0.0.1" };
-    oavx_stream_config_t sc2 = { .name = "Q_STREAM_2", .direction = OAVX_DIR_TRANSMIT, .bind_ip = "127.0.0.1" };
+    oavx_stream_config_t sc1 = {.name = "Q_STREAM_1", .direction = OAVX_DIR_TRANSMIT, .bind_ip = "127.0.0.1"};
+    oavx_stream_config_t sc2 = {.name = "Q_STREAM_2", .direction = OAVX_DIR_TRANSMIT, .bind_ip = "127.0.0.1"};
     oavx_stream_t *st1 = oavx_stream_open(octx, &sc1);
     oavx_stream_t *st2 = oavx_stream_open(octx, &sc2);
     assert(st1 && st2);
@@ -574,7 +586,7 @@ static void proof_f05_avcodec_singleton_destruction(void) {
 
 static volatile bool g_f06_stop = false;
 
-static void* f06_video_thread(void* arg) {
+static void *f06_video_thread(void *arg) {
     avx_tx_instance_t tx = (avx_tx_instance_t)arg;
     oavx_video_frame_t vf;
     memset(&vf, 0, sizeof(vf));
@@ -583,7 +595,7 @@ static void* f06_video_thread(void* arg) {
     vf.fourcc = OAVX_FOURCC_VIDEO_TYPE_SHQ2; /* Forces CPU DCT encoding */
     vf.framerate.num = 60;
     vf.framerate.den = 1;
-    uint8_t *buf = (uint8_t*)malloc(1920 * 1080 * 2);
+    uint8_t *buf = (uint8_t *)malloc(1920 * 1080 * 2);
     memset(buf, 128, 1920 * 1080 * 2);
     vf.planes[0] = buf;
     vf.strides[0] = 1920 * 2;
@@ -610,7 +622,7 @@ static void proof_f06_video_compression_starving_audio(void) {
     assert(tx != NULL);
 
     /* Simulate an active client by connecting a loopback socket */
-    avx_send_ctx_t *slot = (avx_send_ctx_t*)tx;
+    avx_send_ctx_t *slot = (avx_send_ctx_t *)tx;
     slot->active_clients = 1; /* Trigger video encoding path */
 
     oavx_audio_frame_t af;
@@ -619,7 +631,7 @@ static void proof_f06_video_compression_starving_audio(void) {
     af.channels = 2;
     af.frames = 480; /* 10 ms of audio */
     float audio_data[960] = {0};
-    af.planes[0] = (uint8_t*)audio_data;
+    af.planes[0] = (uint8_t *)audio_data;
 
     /* 1. Baseline latency: audio only (no video encoding) */
     double max_us_baseline = 0;
@@ -647,8 +659,10 @@ static void proof_f06_video_compression_starving_audio(void) {
     g_f06_stop = true;
     pthread_join(v_th, NULL);
 
-    printf("    [+] Max audio enqueue latency (Baseline):  %.1f us (%.3f ms)\n", max_us_baseline, max_us_baseline / 1000.0);
-    printf("    [+] Max audio enqueue latency (Contended): %.1f us (%.3f ms)\n", max_us_contended, max_us_contended / 1000.0);
+    printf("    [+] Max audio enqueue latency (Baseline):  %.1f us (%.3f ms)\n", max_us_baseline,
+           max_us_baseline / 1000.0);
+    printf("    [+] Max audio enqueue latency (Contended): %.1f us (%.3f ms)\n", max_us_contended,
+           max_us_contended / 1000.0);
 
     if (max_us_contended > max_us_baseline * 5.0) {
         printf("    [!] Warning: audio enqueue latency increased %.1fx under video encoding\n",
@@ -671,7 +685,7 @@ static void proof_f07_decompression_under_rx_lock(void) {
     rcfg.name = "F07Receiver";
     avx_rx_instance_t rx = avx_rx_create(&rcfg);
     assert(rx != NULL);
-    avx_recv_ctx_t *slot = (avx_recv_ctx_t*)rx;
+    avx_recv_ctx_t *slot = (avx_recv_ctx_t *)rx;
 
     /* Verify slot->decoding_video flag allows concurrent telemetry query */
     slot->decoding_video = true;
@@ -692,7 +706,7 @@ static void proof_f07_decompression_under_rx_lock(void) {
 /* TEST F-08: Non-Blocking Discovery Query Under Concurrent Connect          */
 /* ========================================================================= */
 
-static void* f08_slow_query_thread(void* arg) {
+static void *f08_slow_query_thread(void *arg) {
     avx_find_instance_t finder = (avx_find_instance_t)arg;
     uint32_t count = 0;
     avx_find_get_sources(finder, &count);
@@ -705,7 +719,7 @@ static void proof_f08_blocking_tcp_under_find_lock(void) {
     setenv("OPENAVX_DISCOVERY_SERVER", "192.0.2.1:5960", 1);
 
     avx_engine_initialize();
-    avx_find_config_t fcfg = { .show_local_sources = false };
+    avx_find_config_t fcfg = {.show_local_sources = false};
     avx_find_instance_t finder = avx_find_create(&fcfg);
     assert(finder != NULL);
 
@@ -753,7 +767,7 @@ static void proof_f09_framesync_coarse_mutex(void) {
     avx_sync_instance_t fs = avx_sync_create(rx);
     assert(fs != NULL);
 
-    f09_sync_locks_t *s = (f09_sync_locks_t*)fs;
+    f09_sync_locks_t *s = (f09_sync_locks_t *)fs;
     avx_mutex_lock(&s->video_lock);
     avx_mutex_lock(&s->audio_lock);
     avx_mutex_lock(&s->drain_lock);
@@ -783,7 +797,7 @@ static void proof_f10_discovery_server_send_under_lock(void) {
 
 static volatile bool g_f11_stop = false;
 
-static void* f11_reader(void* arg) {
+static void *f11_reader(void *arg) {
     (void)arg;
     while (!g_f11_stop) {
         const oavx_wire_profile_t *p = avx_wire_get_active_profile();
@@ -857,15 +871,17 @@ static void proof_f13_pthread_mutex_portability(void) {
 /* Test Runner                                                               */
 /* ========================================================================= */
 
-int main(int argc, char** argv) {
-    (void)argc; (void)argv;
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
     printf("=== OpenAVX Concurrency & Lock Hierarchy Tests ===\n");
 
     int passed_checks = 0;
     int failures = 0;
 
     /* F-01: Engine teardown self-deadlock (2000 ms timeout) */
-    audit_result_t r01 = run_monitored_test(proof_f01_engine_teardown_self_deadlock, 2000, "F-01: Engine teardown lock order");
+    audit_result_t r01 =
+        run_monitored_test(proof_f01_engine_teardown_self_deadlock, 2000, "F-01: Engine teardown lock order");
     if (r01.deadlocked || !r01.passed) {
         printf(" [FAIL] %s\n", r01.details);
         failures++;
@@ -885,7 +901,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-03: Teardown deadlock on active receiver (2500 ms timeout) */
-    audit_result_t r03 = run_monitored_test(proof_f03_teardown_deadlock, 2500, "F-03: avx_rx_destroy unblocks active recv_all");
+    audit_result_t r03 =
+        run_monitored_test(proof_f03_teardown_deadlock, 2500, "F-03: avx_rx_destroy unblocks active recv_all");
     if (r03.deadlocked || !r03.passed) {
         printf(" [FAIL] %s\n", r03.details);
         failures++;
@@ -895,7 +912,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-04: Mutex destruction race (2000 ms timeout) */
-    audit_result_t r04 = run_monitored_test(proof_f04_mutex_destruction_race, 2000, "F-04: Mutex teardown vs active worker thread");
+    audit_result_t r04 =
+        run_monitored_test(proof_f04_mutex_destruction_race, 2000, "F-04: Mutex teardown vs active worker thread");
     if (!r04.passed) {
         printf(" [FAIL] %s\n", r04.details);
         failures++;
@@ -905,7 +923,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-05: Cached decoder context reuse */
-    audit_result_t r05 = run_monitored_test(proof_f05_avcodec_singleton_destruction, 5000, "F-05: Cached decoder context reuse");
+    audit_result_t r05 =
+        run_monitored_test(proof_f05_avcodec_singleton_destruction, 5000, "F-05: Cached decoder context reuse");
     if (!r05.passed) {
         printf(" [FAIL] %s\n", r05.details);
         failures++;
@@ -915,7 +934,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-06: Video encoding vs audio enqueue latency */
-    audit_result_t r06 = run_monitored_test(proof_f06_video_compression_starving_audio, 5000, "F-06: Audio enqueue latency under video encode");
+    audit_result_t r06 = run_monitored_test(proof_f06_video_compression_starving_audio, 5000,
+                                            "F-06: Audio enqueue latency under video encode");
     if (!r06.passed) {
         printf(" [FAIL] %s\n", r06.details);
         failures++;
@@ -925,7 +945,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-07: Decompression under rx lock */
-    audit_result_t r07 = run_monitored_test(proof_f07_decompression_under_rx_lock, 2000, "F-07: Telemetry query lock scope during decode");
+    audit_result_t r07 = run_monitored_test(proof_f07_decompression_under_rx_lock, 2000,
+                                            "F-07: Telemetry query lock scope during decode");
     if (!r07.passed) {
         printf(" [FAIL] %s\n", r07.details);
         failures++;
@@ -935,7 +956,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-08: Blocking TCP connect in discovery */
-    audit_result_t r08 = run_monitored_test(proof_f08_blocking_tcp_under_find_lock, 5000, "F-08: Non-blocking discovery query");
+    audit_result_t r08 =
+        run_monitored_test(proof_f08_blocking_tcp_under_find_lock, 5000, "F-08: Non-blocking discovery query");
     if (!r08.passed) {
         printf(" [FAIL] %s\n", r08.details);
         failures++;
@@ -945,7 +967,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-09: FrameSync split mutex hierarchy */
-    audit_result_t r09 = run_monitored_test(proof_f09_framesync_coarse_mutex, 2000, "F-09: FrameSync split mutex hierarchy");
+    audit_result_t r09 =
+        run_monitored_test(proof_f09_framesync_coarse_mutex, 2000, "F-09: FrameSync split mutex hierarchy");
     if (!r09.passed) {
         printf(" [FAIL] %s\n", r09.details);
         failures++;
@@ -955,7 +978,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-10: Discovery server daemon send under lock */
-    audit_result_t r10 = run_monitored_test(proof_f10_discovery_server_send_under_lock, 2000, "F-10: Discovery server send() outside lock");
+    audit_result_t r10 = run_monitored_test(proof_f10_discovery_server_send_under_lock, 2000,
+                                            "F-10: Discovery server send() outside lock");
     if (!r10.passed) {
         printf(" [FAIL] %s\n", r10.details);
         failures++;
@@ -975,7 +999,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-12: Timed wait return code parity */
-    audit_result_t r12 = run_monitored_test(proof_f12_cond_timedwait_divergence, 2000, "F-12: avx_cond_timedwait timeout return code");
+    audit_result_t r12 =
+        run_monitored_test(proof_f12_cond_timedwait_divergence, 2000, "F-12: avx_cond_timedwait timeout return code");
     if (!r12.passed) {
         printf(" [FAIL] %s\n", r12.details);
         failures++;
@@ -985,7 +1010,8 @@ int main(int argc, char** argv) {
     }
 
     /* F-13: Video codec registry lifecycle */
-    audit_result_t r13 = run_monitored_test(proof_f13_pthread_mutex_portability, 2000, "F-13: Portable avx_mutex_t in avx_video_codec.c");
+    audit_result_t r13 = run_monitored_test(proof_f13_pthread_mutex_portability, 2000,
+                                            "F-13: Portable avx_mutex_t in avx_video_codec.c");
     if (!r13.passed) {
         printf(" [FAIL] %s\n", r13.details);
         failures++;
@@ -994,8 +1020,8 @@ int main(int argc, char** argv) {
         passed_checks++;
     }
 
-    printf("\n[%s] openavx_concurrency_audit_test: %d / 13 passed (%d failed)\n\n",
-           failures == 0 ? "PASS" : "FAIL", passed_checks, failures);
+    printf("\n[%s] openavx_concurrency_audit_test: %d / 13 passed (%d failed)\n\n", failures == 0 ? "PASS" : "FAIL",
+           passed_checks, failures);
 
     return (failures == 0) ? 0 : 1;
 }

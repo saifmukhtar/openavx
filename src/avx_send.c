@@ -704,6 +704,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
             int32_t frame_rate_d;
             int64_t timecode;
             uint32_t payload_len;
+            uint32_t flags;
         } AVX_PACKED hdr;
         AVX_PACKED_END
 
@@ -855,6 +856,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
         hdr.frame_rate_d = (int32_t)p_video_data->framerate.den;
         hdr.timecode = p_video_data->dts_ns != 0 ? p_video_data->dts_ns : p_video_data->pts_ns;
         hdr.payload_len = (uint32_t)frame_bytes;
+        hdr.flags = ((uint32_t)p_video_data->scan_type) & 0x3U;
 
         memcpy(vslot->header, &hdr, sizeof(hdr));
         vslot->header_len = sizeof(hdr);
@@ -885,6 +887,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                         int32_t frame_rate_d;
                         int64_t timecode;
                         uint32_t payload_len;
+                        uint32_t flags;
                     } AVX_PACKED wan_hdr;
                     AVX_PACKED_END
                     wan_hdr.magic = magic_video;
@@ -895,6 +898,7 @@ OPENAVX_API void avx_tx_send_video(avx_tx_instance_t p_instance, const oavx_vide
                     wan_hdr.frame_rate_d = (int32_t)p_video_data->framerate.den;
                     wan_hdr.timecode = p_video_data->dts_ns != 0 ? p_video_data->dts_ns : p_video_data->pts_ns;
                     wan_hdr.payload_len = (uint32_t)actual_wan;
+                    wan_hdr.flags = ((uint32_t)p_video_data->scan_type) & 0x3U;
                     memcpy(wan_buf, &wan_hdr, sizeof(wan_hdr));
 
                     wan_shared_pkt = (avx_tx_shared_pkt_t *)calloc(1, sizeof(avx_tx_shared_pkt_t));
