@@ -1021,6 +1021,8 @@ static int avcodec_enc_prepare_input(avx_avcodec_enc_ctx_t *ctx, const oavx_vide
     }
 
     if (src_fourcc == OAVX_FOURCC_VIDEO_TYPE_BGRA) {
+        size_t s0 = in_frame->strides[0] ? in_frame->strides[0] : (size_t)w * 4;
+        if (s0 < (size_t)w * 4) return -1;
         size_t needed = (size_t)w * (size_t)h * 2;
         if (ctx->tmp_cap < needed) {
             uint8_t *nb = (uint8_t *)realloc(ctx->tmp_buf, needed);
@@ -1028,7 +1030,15 @@ static int avcodec_enc_prepare_input(avx_avcodec_enc_ctx_t *ctx, const oavx_vide
             ctx->tmp_buf = nb;
             ctx->tmp_cap = needed;
         }
-        avx_color_bgra_to_uyvy(in_frame->planes[0], ctx->tmp_buf, (int)w, (int)h);
+        if (s0 == (size_t)w * 4) {
+            avx_color_bgra_to_uyvy(in_frame->planes[0], ctx->tmp_buf, (int)w, (int)h);
+        } else {
+            for (uint32_t y = 0; y < h; ++y) {
+                const uint8_t *src_row = in_frame->planes[0] + (size_t)y * s0;
+                uint8_t *dst_row = ctx->tmp_buf + (size_t)y * (size_t)w * 2;
+                avx_color_bgra_to_uyvy(src_row, dst_row, (int)w, 1);
+            }
+        }
         avx_color_uyvy_to_i420(ctx->tmp_buf, (size_t)w * 2, f->data[0], (size_t)f->linesize[0], f->data[1],
                                (size_t)f->linesize[1], f->data[2], (size_t)f->linesize[2], (int)w, (int)h);
         return 0;
