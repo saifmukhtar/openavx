@@ -1111,9 +1111,9 @@ static void avx_rx_convert_video_format(avx_recv_ctx_t *slot, oavx_color_format_
 static oavx_frame_type_t avx_rx_deliver_video_frame(avx_recv_ctx_t *slot, avx_video_decoder_t *vdec,
                                                     oavx_color_format_e color_fmt, bool is_compressed,
                                                     const char *metadata_str, uint32_t fourcc, uint32_t width,
-                                                    uint32_t height, int32_t fps_num, int32_t fps_den, int64_t timecode,
-                                                    uint8_t *payload, size_t payload_len,
-                                                    oavx_video_frame_t *p_video_data) {
+                                                    uint32_t height, int32_t fps_num, int32_t fps_den,
+                                                    oavx_scan_type_t scan_type, int64_t timecode, uint8_t *payload,
+                                                    size_t payload_len, oavx_video_frame_t *p_video_data) {
     if (!p_video_data) {
         return OAVX_FRAME_TYPE_VIDEO;
     }
@@ -1125,7 +1125,7 @@ static oavx_frame_type_t avx_rx_deliver_video_frame(avx_recv_ctx_t *slot, avx_vi
     p_video_data->framerate.den = (uint32_t)fps_den;
     p_video_data->aspect_ratio.num = width;
     p_video_data->aspect_ratio.den = height > 0 ? height : 1;
-    p_video_data->scan_type = OAVX_SCAN_PROGRESSIVE;
+    p_video_data->scan_type = (scan_type < OAVX_SCAN_COUNT) ? scan_type : OAVX_SCAN_PROGRESSIVE;
     p_video_data->pts_ns = timecode;
     p_video_data->dts_ns = timecode;
     p_video_data->metadata = metadata_str;
@@ -1494,6 +1494,7 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(avx_rx_instance_t p_instance, oavx_
                     int32_t frame_rate_d;
                     int64_t timecode;
                     uint32_t payload_len;
+                    uint32_t flags;
                 } AVX_PACKED vhdr;
                 AVX_PACKED_END
 
@@ -1532,9 +1533,10 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(avx_rx_instance_t p_instance, oavx_
                     slot->decoding_video = true;
                     avx_mutex_unlock(&slot->lock);
 
+                    oavx_scan_type_t scan = (oavx_scan_type_t)(vhdr.flags & 0x3U);
                     oavx_frame_type_t ft =
                         avx_rx_deliver_video_frame(slot, vdec, color_fmt, is_compressed, metadata_str, vhdr.fourcc,
-                                                   vhdr.xres, vhdr.yres, vhdr.frame_rate_n, vhdr.frame_rate_d,
+                                                   vhdr.xres, vhdr.yres, vhdr.frame_rate_n, vhdr.frame_rate_d, scan,
                                                    vhdr.timecode, raw_payload, frame_payload_len, p_video_data);
 
                     avx_mutex_lock(&slot->lock);
@@ -1605,6 +1607,7 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(avx_rx_instance_t p_instance, oavx_
             int32_t frame_rate_d;
             int64_t timecode;
             uint32_t payload_len;
+            uint32_t flags;
         } AVX_PACKED vhdr;
         AVX_PACKED_END
 
@@ -1681,9 +1684,10 @@ OPENAVX_API oavx_frame_type_t avx_rx_receive(avx_rx_instance_t p_instance, oavx_
         slot->decoding_video = true;
         avx_mutex_unlock(&slot->lock);
 
+        oavx_scan_type_t scan = (oavx_scan_type_t)(vhdr.flags & 0x3U);
         oavx_frame_type_t ft = avx_rx_deliver_video_frame(
             slot, vdec, color_fmt, is_compressed, metadata_str, vhdr.fourcc, vhdr.xres, vhdr.yres, vhdr.frame_rate_n,
-            vhdr.frame_rate_d, vhdr.timecode, slot->video_buf, vhdr.payload_len, p_video_data);
+            vhdr.frame_rate_d, scan, vhdr.timecode, slot->video_buf, vhdr.payload_len, p_video_data);
 
         avx_mutex_lock(&slot->lock);
         slot->decoding_video = false;

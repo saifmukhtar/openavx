@@ -52,9 +52,9 @@ def main():
         assert "<oavx_stream" in xml_str, "XML missing <oavx_stream"
         print("\033[1;32m[+] Handshake XML validated successfully!\033[0m\n")
 
-        # 3. Read Video Frame Header (36 bytes)
-        # struct { uint32 magic, uint32 xres, uint32 yres, uint32 fourcc, int32 n, int32 d, int64 tc, uint32 len }
-        hdr_fmt = "<IIIIiiqI"
+        # 3. Read Video Frame Header (40 bytes)
+        # struct { uint32 magic, uint32 xres, uint32 yres, uint32 fourcc, int32 n, int32 d, int64 tc, uint32 len, uint32 flags }
+        hdr_fmt = "<IIIIiiqII"
         hdr_size = struct.calcsize(hdr_fmt)
         print(f"[*] Waiting for live video frame from sender (Header size: {hdr_size} bytes)...")
 
@@ -63,7 +63,7 @@ def main():
             print(f"[-] Incomplete video header received: {len(hdr_bytes)}/{hdr_size}")
             return 1
 
-        magic, xres, yres, fourcc, fr_n, fr_d, tc, payload_len = struct.unpack(hdr_fmt, hdr_bytes)
+        magic, xres, yres, fourcc, fr_n, fr_d, tc, payload_len, vflags = struct.unpack(hdr_fmt, hdr_bytes)
         fourcc_str = "".join([chr((fourcc >> (8*i)) & 0xff) for i in range(4)])
         magic_str = "".join([chr((magic >> (8*i)) & 0xff) for i in range(4)])
 
